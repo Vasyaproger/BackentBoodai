@@ -613,6 +613,62 @@ app.get("/stories", authenticateToken, async (req, res) => {
   }
 });
 
+
+// Получение всех баннеров
+app.get("/banners", async (req, res) => {
+  try {
+    const banners = await db.query("SELECT * FROM banners");
+    res.json(banners);
+  } catch (error) {
+    res.status(500).json({ error: "Ошибка сервера" });
+  }
+});
+
+// Добавление баннеров
+app.post("/banners", upload.array("images"), async (req, res) => {
+  try {
+    const images = req.files.map((file) => file.path);
+    const banner = await db.query(
+      "INSERT INTO banners (image, created_at) VALUES ($1, NOW()) RETURNING *",
+      [images[0]] // Для простоты берём первое изображение
+    );
+    res.json(banner);
+  } catch (error) {
+    res.status(500).json({ error: "Ошибка добавления баннера" });
+  }
+});
+
+// Обновление баннера
+app.put("/banners/:id", upload.array("images"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const images = req.files.map((file) => file.path);
+    const banner = await db.query(
+      "UPDATE banners SET image = $1 WHERE id = $2 RETURNING *",
+      [images[0] || req.body.image, id]
+    );
+    if (!banner) return res.status(404).json({ error: "Баннер не найден" });
+    res.json(banner);
+  } catch (error) {
+    res.status(500).json({ error: "Ошибка обновления баннера" });
+  }
+});
+
+// Удаление баннера
+app.delete("/banners/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const banner = await db.query(
+      "DELETE FROM banners WHERE id = $1 RETURNING *",
+      [id]
+    );
+    if (!banner) return res.status(404).json({ error: "Баннер не найден" });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Ошибка удаления баннера" });
+  }
+});
+
 app.get("/categories", authenticateToken, async (req, res) => {
   try {
     const [categories] = await db.query("SELECT * FROM categories");
