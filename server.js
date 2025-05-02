@@ -669,13 +669,22 @@ app.get("/stories", authenticateToken, async (req, res) => {
   }
 });
 
-// Маршруты для баннеров
+// Маршрут для получения всех баннеров
 app.get("/banners", authenticateToken, async (req, res) => {
   try {
-    const [banners] = await db.query("SELECT * FROM banners");
+    const [banners] = await db.query(`
+      SELECT b.*, pc.code AS promo_code, pc.discount_percent
+      FROM banners b
+      LEFT JOIN promo_codes pc ON b.promo_code_id = pc.id
+    `);
     const bannersWithUrls = banners.map(banner => ({
       ...banner,
-      image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${banner.image.split("/").pop()}`
+      image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${banner.image.split("/").pop()}`,
+      promo_code: banner.promo_code ? {
+        id: banner.promo_code_id,
+        code: banner.promo_code,
+        discount_percent: banner.discount_percent || 0
+      } : null
     }));
     res.json(bannersWithUrls);
   } catch (err) {
@@ -684,6 +693,36 @@ app.get("/banners", authenticateToken, async (req, res) => {
   }
 });
 
+
+// Маршрут для получения одного баннера
+app.get("/banners/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [banners] = await db.query(`
+      SELECT b.*, pc.code AS promo_code, pc.discount_percent
+      FROM banners b
+      LEFT JOIN promo_codes pc ON b.promo_code_id = pc.id
+      WHERE b.id = ?
+    `, [id]);
+    if (banners.length === 0) {
+      return res.status(404).json({ error: "Баннер не найден" });
+    }
+    const banner = banners[0];
+    res.json({
+      ...banner,
+      image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${banner.image.split("/").pop()}`,
+      promo_code: banner.promo_code ? {
+        id: banner.promo_code_id,
+        code: banner.promo_code,
+        discount_percent: banner.discount_percent || 0
+      } : null
+    });
+  } catch (err) {
+    console.error("Ошибка при получении баннера:", err.message);
+    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  }
+});
+// Маршрут для создания баннера
 app.post("/banners", authenticateToken, (req, res) => {
   upload(req, res, async (err) => {
     if (err) {
@@ -691,7 +730,7 @@ app.post("/banners", authenticateToken, (req, res) => {
       return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
     }
 
-    const { title, description, button_text } = req.body;
+    const { title, description, button_text, promo_code_id } = req.body;
 
     if (!req.file) {
       return res.status(400).json({ error: "Изображение обязательно" });
@@ -707,15 +746,30 @@ app.post("/banners", authenticateToken, (req, res) => {
 
     try {
       const [result] = await db.query(
-        "INSERT INTO banners (image, title, description, button_text) VALUES (?, ?, ?, ?)",
-        [imageKey, title || null, description || null, button_text || null]
+        "INSERT INTO banners (image, title, description, button_text, promo_code_id) VALUES (?, ?, ?, ?, ?)",
+        [imageKey, title || null, description || null, button_text || null, promo_code_id || null]
       );
+
+      const [newBanner] = await db.query(`
+        SELECT b.*, pc.code AS promo_code, pc.discount_percent
+        FROM banners b
+        LEFT JOIN promo_codes pc ON b.promo_code_id = pc.id
+        WHERE b.id = ?
+      `, [result.insertId]);
+
+      const banner = newBanner[0];
       res.status(201).json({
         id: result.insertId,
         image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${imageKey.split("/").pop()}`,
         title,
         description,
-        button_text
+        button_text,
+        promo_code_id,
+        promo_code: banner.promo_code ? {
+          id: banner.promo_code_id,
+          code: banner.promo_code,
+          discount_percent: banner.discount_percent || 0
+        } : null
       });
     } catch (err) {
       console.error("Ошибка при добавлении баннера:", err.message);
@@ -723,7 +777,7 @@ app.post("/banners", authenticateToken, (req, res) => {
     }
   });
 });
-
+// Маршрут для обновления баннера
 app.put("/banners/:id", authenticateToken, (req, res) => {
   upload(req, res, async (err) => {
     if (err) {
@@ -732,7 +786,7 @@ app.put("/banners/:id", authenticateToken, (req, res) => {
     }
 
     const { id } = req.params;
-    const { title, description, button_text } = req.body;
+    const { title, description, button_text, promo_code_id } = req.body;
     let imageKey;
 
     try {
@@ -751,15 +805,30 @@ app.put("/banners/:id", authenticateToken, (req, res) => {
       }
 
       await db.query(
-        "UPDATE banners SET image = ?, title = ?, description = ?, button_text = ? WHERE id = ?",
-        [imageKey, title || null, description || null, button_text || null, id]
+        "UPDATE banners SET image = ?, title = ?, description = ?, button_text = ?, promo_code_id = ? WHERE id = ?",
+        [imageKey, title || null, description || null, button_text || null, promo_code_id || null, id]
       );
+
+      const [updatedBanner] = await db.query(`
+        SELECT b.*, pc.code AS promo_code, pc.discount_percent
+        FROM banners b
+        LEFT JOIN promo_codes pc ON b.promo_code_id = pc.id
+        WHERE b.id = ?
+      `, [id]);
+
+      const banner = updatedBanner[0];
       res.json({
         id,
         image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${imageKey.split("/").pop()}`,
         title,
         description,
-        button_text
+        button_text,
+        promo_code_id,
+        promo_code: banner.promo_code ? {
+          id: banner.promo_code_id,
+          code: banner.promo_code,
+          discount_percent: banner.discount_percent || 0
+        } : null
       });
     } catch (err) {
       console.error("Ошибка при обновлении баннера:", err.message);
