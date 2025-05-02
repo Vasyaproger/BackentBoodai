@@ -328,10 +328,32 @@ const initializeServer = async () => {
       CREATE TABLE IF NOT EXISTS banners (
         id INT AUTO_INCREMENT PRIMARY KEY,
         image VARCHAR(255) NOT NULL,
+        title VARCHAR(255),
+        description TEXT,
+        button_text VARCHAR(100),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
     console.log("Таблица banners проверена/создана");
+
+    // Проверка и добавление колонок в таблицу banners
+    const [bannerColumns] = await connection.query("SHOW COLUMNS FROM banners");
+    const bannerFields = bannerColumns.map((col) => col.Field);
+
+    if (!bannerFields.includes("title")) {
+      await connection.query("ALTER TABLE banners ADD COLUMN title VARCHAR(255)");
+      console.log("Добавлена колонка title в таблицу banners");
+    }
+
+    if (!bannerFields.includes("description")) {
+      await connection.query("ALTER TABLE banners ADD COLUMN description TEXT");
+      console.log("Добавлена колонка description в таблицу banners");
+    }
+
+    if (!bannerFields.includes("button_text")) {
+      await connection.query("ALTER TABLE banners ADD COLUMN button_text VARCHAR(100)");
+      console.log("Добавлена колонка button_text в таблицу banners");
+    }
 
     // Проверка и добавление колонок в таблицу discounts
     const [discountColumns] = await connection.query("SHOW COLUMNS FROM discounts");
@@ -420,7 +442,7 @@ app.get("/api/public/stories", async (req, res) => {
     const [stories] = await db.query("SELECT * FROM stories");
     const storiesWithUrls = stories.map(story => ({
       ...story,
-      image: `https://nukesul-brepb-651f.twc1.net/product-image/${story.image.split("/").pop()}`
+      image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${story.image.split("/").pop()}`
     }));
     res.json(storiesWithUrls);
   } catch (err) {
@@ -434,11 +456,29 @@ app.get("/api/public/banners", async (req, res) => {
     const [banners] = await db.query("SELECT * FROM banners");
     const bannersWithUrls = banners.map(banner => ({
       ...banner,
-      image: `https://nukesul-brepb-651f.twc1.net/product-image/${banner.image.split("/").pop()}`
+      image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${banner.image.split("/").pop()}`
     }));
     res.json(bannersWithUrls);
   } catch (err) {
     console.error("Ошибка при получении баннеров:", err.message);
+    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  }
+});
+
+app.get("/api/public/banners/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [banners] = await db.query("SELECT * FROM banners WHERE id = ?", [id]);
+    if (banners.length === 0) {
+      return res.status(404).json({ error: "Баннер не найден" });
+    }
+    const banner = banners[0];
+    res.json({
+      ...banner,
+      image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${banner.image.split("/").pop()}`
+    });
+  } catch (err) {
+    console.error("Ошибка при получении баннера:", err.message);
     res.status(500).json({ error: "Ошибка сервера: " + err.message });
   }
 });
@@ -621,7 +661,7 @@ app.get("/stories", authenticateToken, async (req, res) => {
     const [stories] = await db.query("SELECT * FROM stories");
     const storiesWithUrls = stories.map(story => ({
       ...story,
-      image: `https://nukesul-brepb-651f.twc1.net/product-image/${story.image.split("/").pop()}`
+      image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${story.image.split("/").pop()}`
     }));
     res.json(storiesWithUrls);
   } catch (err) {
@@ -635,7 +675,7 @@ app.get("/banners", authenticateToken, async (req, res) => {
     const [banners] = await db.query("SELECT * FROM banners");
     const bannersWithUrls = banners.map(banner => ({
       ...banner,
-      image: `https://nukesul-brepb-651f.twc1.net/product-image/${banner.image.split("/").pop()}`
+      image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${banner.image.split("/").pop()}`
     }));
     res.json(bannersWithUrls);
   } catch (err) {
@@ -651,6 +691,8 @@ app.post("/banners", authenticateToken, (req, res) => {
       return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
     }
 
+    const { title, description, button_text } = req.body;
+
     if (!req.file) {
       return res.status(400).json({ error: "Изображение обязательно" });
     }
@@ -664,8 +706,17 @@ app.post("/banners", authenticateToken, (req, res) => {
     }
 
     try {
-      const [result] = await db.query("INSERT INTO banners (image) VALUES (?)", [imageKey]);
-      res.status(201).json({ id: result.insertId, image: `https://nukesul-brepb-651f.twc1.net/product-image/${imageKey.split("/").pop()}` });
+      const [result] = await db.query(
+        "INSERT INTO banners (image, title, description, button_text) VALUES (?, ?, ?, ?)",
+        [imageKey, title || null, description || null, button_text || null]
+      );
+      res.status(201).json({
+        id: result.insertId,
+        image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${imageKey.split("/").pop()}`,
+        title,
+        description,
+        button_text
+      });
     } catch (err) {
       console.error("Ошибка при добавлении баннера:", err.message);
       res.status(500).json({ error: "Ошибка сервера: " + err.message });
@@ -681,6 +732,7 @@ app.put("/banners/:id", authenticateToken, (req, res) => {
     }
 
     const { id } = req.params;
+    const { title, description, button_text } = req.body;
     let imageKey;
 
     try {
@@ -698,8 +750,17 @@ app.put("/banners/:id", authenticateToken, (req, res) => {
         imageKey = existing[0].image;
       }
 
-      await db.query("UPDATE banners SET image = ? WHERE id = ?", [imageKey, id]);
-      res.json({ id, image: `https://nukesul-brepb-651f.twc1.net/product-image/${imageKey.split("/").pop()}` });
+      await db.query(
+        "UPDATE banners SET image = ?, title = ?, description = ?, button_text = ? WHERE id = ?",
+        [imageKey, title || null, description || null, button_text || null, id]
+      );
+      res.json({
+        id,
+        image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${imageKey.split("/").pop()}`,
+        title,
+        description,
+        button_text
+      });
     } catch (err) {
       console.error("Ошибка при обновлении баннера:", err.message);
       res.status(500).json({ error: "Ошибка сервера: " + err.message });
@@ -1193,7 +1254,7 @@ app.post("/stories", authenticateToken, (req, res) => {
 
     try {
       const [result] = await db.query("INSERT INTO stories (image) VALUES (?)", [imageKey]);
-      res.status(201).json({ id: result.insertId, image: `https://nukesul-brepb-651f.twc1.net/product-image/${imageKey.split("/").pop()}` });
+      res.status(201).json({ id: result.insertId, image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${imageKey.split("/").pop()}` });
     } catch (err) {
       console.error("Ошибка при добавлении истории:", err.message);
       res.status(500).json({ error: "Ошибка сервера: " + err.message });
@@ -1227,7 +1288,7 @@ app.put("/stories/:id", authenticateToken, (req, res) => {
       }
 
       await db.query("UPDATE stories SET image = ? WHERE id = ?", [imageKey, id]);
-      res.json({ id, image: `https://nukesul-brepb-651f.twc1.net/product-image/${imageKey.split("/").pop()}` });
+      res.json({ id, image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${imageKey.split("/").pop()}` });
     } catch (err) {
       console.error("Ошибка при обновлении истории:", err.message);
       res.status(500).json({ error: "Ошибка сервера: " + err.message });
