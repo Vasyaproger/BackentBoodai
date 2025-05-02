@@ -144,7 +144,7 @@ const optionalAuthenticateToken = (req, res, next) => {
   }
 };
 
-// Маршрут для получения изображения продукта по ключу
+// Маршрут для получения изображения по ключу
 app.get("/product-image/:key", optionalAuthenticateToken, async (req, res) => {
   const { key } = req.params;
   try {
@@ -163,8 +163,8 @@ const initializeServer = async () => {
     console.log("Попытка подключения к MySQL...");
     const connection = await db.getConnection();
     console.log("Подключено к MySQL успешно!");
-    
-    // Создание таблицы branches, если она не существует
+
+    // Создание таблицы branches
     await connection.query(`
       CREATE TABLE IF NOT EXISTS branches (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -211,7 +211,6 @@ const initializeServer = async () => {
       );
       console.log("Добавлены филиалы с telegram_chat_id");
     } else {
-      // Обновляем telegram_chat_id для существующих филиалов, если они NULL
       await connection.query(
         "UPDATE branches SET telegram_chat_id = ? WHERE name = 'BOODAI PIZZA' AND (telegram_chat_id IS NULL OR telegram_chat_id = '')",
         ["-1002311447135"]
@@ -231,7 +230,7 @@ const initializeServer = async () => {
       console.log("Обновлены telegram_chat_id для существующих филиалов");
     }
 
-    // Проверка, что все филиалы имеют telegram_chat_id
+    // Проверка telegram_chat_id
     const [allBranches] = await connection.query("SELECT id, name, telegram_chat_id FROM branches");
     for (const branch of allBranches) {
       if (!branch.telegram_chat_id) {
@@ -323,6 +322,16 @@ const initializeServer = async () => {
       )
     `);
     console.log("Таблица discounts проверена/создана");
+
+    // Создание таблицы banners
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS banners (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        image VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log("Таблица banners проверена/создана");
 
     // Проверка и добавление колонок в таблицу discounts
     const [discountColumns] = await connection.query("SHOW COLUMNS FROM discounts");
@@ -420,6 +429,20 @@ app.get("/api/public/stories", async (req, res) => {
   }
 });
 
+app.get("/api/public/banners", async (req, res) => {
+  try {
+    const [banners] = await db.query("SELECT * FROM banners");
+    const bannersWithUrls = banners.map(banner => ({
+      ...banner,
+      image: `https://nukesul-brepb-651f.twc1.net/product-image/${banner.image.split("/").pop()}`
+    }));
+    res.json(bannersWithUrls);
+  } catch (err) {
+    console.error("Ошибка при получении баннеров:", err.message);
+    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  }
+});
+
 app.post("/api/public/validate-promo", async (req, res) => {
   const { promoCode } = req.body;
   try {
@@ -437,7 +460,6 @@ app.post("/api/public/validate-promo", async (req, res) => {
 app.post("/api/public/send-order", async (req, res) => {
   const { orderDetails, deliveryDetails, cartItems, discount, promoCode, branchId } = req.body;
 
-  // Проверка входных данных
   if (!cartItems || !Array.isArray(cartItems) || cartItems.length === 0) {
     return res.status(400).json({ error: "Корзина пуста или содержит некорректные данные" });
   }
@@ -446,14 +468,11 @@ app.post("/api/public/send-order", async (req, res) => {
   }
 
   try {
-    // Расчет стоимости заказа
     const total = cartItems.reduce((sum, item) => sum + (Number(item.originalPrice) || 0) * item.quantity, 0);
     const discountedTotal = total * (1 - (discount || 0) / 100);
 
-    // Экранирование специальных символов для Markdown
     const escapeMarkdown = (text) => (text ? text.replace(/([_*[\]()~`>#+-.!])/g, "\\$1") : "Нет");
 
-    // Формирование текста заказа
     const orderText = `
 📦 *Новый заказ:*
 🏪 Филиал: ${escapeMarkdown((await db.query("SELECT name FROM branches WHERE id = ?", [branchId]))[0][0]?.name || "Неизвестный филиал")}
@@ -470,7 +489,6 @@ ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} �
 💰 Итоговая сумма: ${discountedTotal.toFixed(2)} сом
     `;
 
-    // Сохранение заказа в базе данных
     const [result] = await db.query(
       `
       INSERT INTO orders (branch_id, total, status, order_details, delivery_details, cart_items, discount, promo_code)
@@ -487,7 +505,6 @@ ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} �
       ]
     );
 
-    // Получение telegram_chat_id для филиала
     const [branch] = await db.query("SELECT name, telegram_chat_id FROM branches WHERE id = ?", [branchId]);
     if (branch.length === 0) {
       console.error(`Филиал с id ${branchId} не найден в базе данных`);
@@ -503,7 +520,6 @@ ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} �
     }
 
     const TELEGRAM_BOT_TOKEN = "7858016810:AAELHxlmZORP7iHEIWdqYKw-rHl-q3aB8yY";
-    // Отправка заказа в Telegram
     console.log(`Отправка заказа в Telegram для филиала "${branch[0].name}" (id: ${branchId}, chat_id: ${chatId})`);
     try {
       const response = await axios.post(
@@ -613,59 +629,99 @@ app.get("/stories", authenticateToken, async (req, res) => {
   }
 });
 
-
-// Получение всех баннеров
-app.get("/banners", async (req, res) => {
+// Маршруты для баннеров
+app.get("/banners", authenticateToken, async (req, res) => {
   try {
-    const banners = await db.query("SELECT * FROM banners");
-    res.json(banners);
-  } catch (error) {
-    res.status(500).json({ error: "Ошибка сервера" });
+    const [banners] = await db.query("SELECT * FROM banners");
+    const bannersWithUrls = banners.map(banner => ({
+      ...banner,
+      image: `https://nukesul-brepb-651f.twc1.net/product-image/${banner.image.split("/").pop()}`
+    }));
+    res.json(bannersWithUrls);
+  } catch (err) {
+    console.error("Ошибка при получении баннеров:", err.message);
+    res.status(500).json({ error: "Ошибка сервера: " + err.message });
   }
 });
 
-// Добавление баннеров
-app.post("/banners", upload.array("images"), async (req, res) => {
-  try {
-    const images = req.files.map((file) => file.path);
-    const banner = await db.query(
-      "INSERT INTO banners (image, created_at) VALUES ($1, NOW()) RETURNING *",
-      [images[0]] // Для простоты берём первое изображение
-    );
-    res.json(banner);
-  } catch (error) {
-    res.status(500).json({ error: "Ошибка добавления баннера" });
-  }
+app.post("/banners", authenticateToken, (req, res) => {
+  upload(req, res, async (err) => {
+    if (err) {
+      console.error("Ошибка загрузки изображения:", err.message);
+      return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: "Изображение обязательно" });
+    }
+
+    let imageKey;
+    try {
+      imageKey = await uploadToS3(req.file);
+    } catch (s3Err) {
+      console.error("Ошибка при загрузке в S3:", s3Err.message);
+      return res.status(500).json({ error: "Ошибка загрузки в S3: " + s3Err.message });
+    }
+
+    try {
+      const [result] = await db.query("INSERT INTO banners (image) VALUES (?)", [imageKey]);
+      res.status(201).json({ id: result.insertId, image: `https://nukesul-brepb-651f.twc1.net/product-image/${imageKey.split("/").pop()}` });
+    } catch (err) {
+      console.error("Ошибка при добавлении баннера:", err.message);
+      res.status(500).json({ error: "Ошибка сервера: " + err.message });
+    }
+  });
 });
 
-// Обновление баннера
-app.put("/banners/:id", upload.array("images"), async (req, res) => {
-  try {
+app.put("/banners/:id", authenticateToken, (req, res) => {
+  upload(req, res, async (err) => {
+    if (err) {
+      console.error("Ошибка загрузки изображения:", err.message);
+      return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+    }
+
     const { id } = req.params;
-    const images = req.files.map((file) => file.path);
-    const banner = await db.query(
-      "UPDATE banners SET image = $1 WHERE id = $2 RETURNING *",
-      [images[0] || req.body.image, id]
-    );
-    if (!banner) return res.status(404).json({ error: "Баннер не найден" });
-    res.json(banner);
-  } catch (error) {
-    res.status(500).json({ error: "Ошибка обновления баннера" });
-  }
+    let imageKey;
+
+    try {
+      const [existing] = await db.query("SELECT image FROM banners WHERE id = ?", [id]);
+      if (existing.length === 0) {
+        return res.status(404).json({ error: "Баннер не найден" });
+      }
+
+      if (req.file) {
+        imageKey = await uploadToS3(req.file);
+        if (existing[0].image) {
+          await deleteFromS3(existing[0].image);
+        }
+      } else {
+        imageKey = existing[0].image;
+      }
+
+      await db.query("UPDATE banners SET image = ? WHERE id = ?", [imageKey, id]);
+      res.json({ id, image: `https://nukesul-brepb-651f.twc1.net/product-image/${imageKey.split("/").pop()}` });
+    } catch (err) {
+      console.error("Ошибка при обновлении баннера:", err.message);
+      res.status(500).json({ error: "Ошибка сервера: " + err.message });
+    }
+  });
 });
 
-// Удаление баннера
-app.delete("/banners/:id", async (req, res) => {
+app.delete("/banners/:id", authenticateToken, async (req, res) => {
+  const { id } = req.params;
   try {
-    const { id } = req.params;
-    const banner = await db.query(
-      "DELETE FROM banners WHERE id = $1 RETURNING *",
-      [id]
-    );
-    if (!banner) return res.status(404).json({ error: "Баннер не найден" });
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: "Ошибка удаления баннера" });
+    const [banner] = await db.query("SELECT image FROM banners WHERE id = ?", [id]);
+    if (banner.length === 0) return res.status(404).json({ error: "Баннер не найден" });
+
+    if (banner[0].image) {
+      await deleteFromS3(banner[0].image);
+    }
+
+    await db.query("DELETE FROM banners WHERE id = ?", [id]);
+    res.json({ message: "Баннер удален" });
+  } catch (err) {
+    console.error("Ошибка при удалении баннера:", err.message);
+    res.status(500).json({ error: "Ошибка сервера: " + err.message });
   }
 });
 
@@ -1027,11 +1083,9 @@ app.post("/discounts", authenticateToken, async (req, res) => {
   if (discountPercent < 1 || discountPercent > 100) return res.status(400).json({ error: "Процент скидки должен быть от 1 до 100" });
 
   try {
-    // Проверка существования продукта
     const [product] = await db.query("SELECT id FROM products WHERE id = ?", [productId]);
     if (product.length === 0) return res.status(404).json({ error: "Продукт не найден" });
 
-    // Проверка, есть ли уже активная скидка для этого продукта
     const [existingDiscount] = await db.query(`
       SELECT id FROM discounts 
       WHERE product_id = ? AND is_active = TRUE AND (expires_at IS NULL OR expires_at > NOW())
@@ -1065,15 +1119,12 @@ app.put("/discounts/:id", authenticateToken, async (req, res) => {
   if (discountPercent < 1 || discountPercent > 100) return res.status(400).json({ error: "Процент скидки должен быть от 1 до 100" });
 
   try {
-    // Проверка существования скидки
     const [discount] = await db.query("SELECT product_id FROM discounts WHERE id = ?", [id]);
     if (discount.length === 0) return res.status(404).json({ error: "Скидка не найдена" });
 
-    // Проверка существования продукта
     const [product] = await db.query("SELECT id FROM products WHERE id = ?", [productId]);
     if (product.length === 0) return res.status(404).json({ error: "Продукт не найден" });
 
-    // Проверка, есть ли другая активная скидка для этого продукта (кроме текущей)
     if (discount[0].product_id !== productId) {
       const [existingDiscount] = await db.query(`
         SELECT id FROM discounts 
