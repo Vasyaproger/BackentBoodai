@@ -840,13 +840,18 @@ app.put("/banners/:id", authenticateToken, (req, res) => {
 
 app.get('/api/public/promo-codes/:id', async (req, res) => {
   try {
-    const promoCode = await PromoCode.findById(req.params.id);
-    if (!promoCode) {
-      return res.status(404).json({ error: 'Promo code not found' });
+    const { id } = req.params;
+    const [rows] = await db.query(
+      'SELECT * FROM promo_codes WHERE id = ? AND is_active = TRUE AND (expires_at IS NULL OR expires_at > NOW())',
+      [id]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Промокод не найден или недействителен' });
     }
-    res.json(promoCode);
-  } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    res.json(rows[0]); // Возвращаем первый найденный промокод
+  } catch (err) {
+    console.error('Ошибка при получении промокода:', err.message, err.stack);
+    res.status(500).json({ error: 'Ошибка сервера: ' + err.message });
   }
 });
 
