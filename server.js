@@ -837,6 +837,20 @@ app.put("/banners/:id", authenticateToken, (req, res) => {
   });
 });
 
+
+app.get('/api/public/promo-codes/:id', async (req, res) => {
+  try {
+    const promoCode = await PromoCode.findById(req.params.id);
+    if (!promoCode) {
+      return res.status(404).json({ error: 'Promo code not found' });
+    }
+    res.json(promoCode);
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+
 app.delete("/banners/:id", authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
