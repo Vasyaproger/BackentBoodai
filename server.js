@@ -8,12 +8,20 @@ const path = require("path");
 const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
 const { Upload } = require("@aws-sdk/lib-storage");
 const axios = require("axios");
+const admin = require("firebase-admin"); // Добавляем Firebase Admin SDK
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const JWT_SECRET = "your_jwt_secret_key";
+
+// Инициализация Firebase Admin SDK
+const serviceAccount = require("./boodai-pizza-firebase-adminsdk.json"); // Укажите путь к вашему JSON-файлу
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+const firestore = admin.firestore();
 
 // Настройка S3Client для Timeweb Cloud
 const s3Client = new S3Client({
@@ -27,6 +35,7 @@ const s3Client = new S3Client({
 });
 
 const S3_BUCKET = "4eeafbc6-4af2cd44-4c23-4530-a2bf-750889dfdf75";
+const TELEGRAM_BOT_TOKEN = "7858016810:AAELHxlmZORP7iHEIWdqYKw-rHl-q3aB8yY";
 
 // Проверка подключения к S3
 const testS3Connection = async () => {
@@ -107,7 +116,7 @@ const deleteFromS3 = async (key) => {
   }
 };
 
-// Подключение к базе данных
+// Подключение к базе данных MySQL
 const db = mysql.createPool({
   host: "vh438.timeweb.ru",
   user: "ch79145_boodai",
@@ -393,7 +402,7 @@ const initializeServer = async () => {
 // Публичные маршруты
 app.get("/api/public/branches", async (req, res) => {
   try {
-    const [branches] = await db.query("SELECT id, name, address FROM branches");
+    const [branches] = await db.query("SELECT id, name, address, telegram_chat_id FROM branches"); // Добавляем telegram_chat_id
     res.json(branches);
   } catch (err) {
     console.error("Ошибка при получении филиалов:", err.message);
@@ -498,7 +507,7 @@ app.post("/api/public/validate-promo", async (req, res) => {
 });
 
 app.post("/api/public/send-order", async (req, res) => {
-  const { orderDetails, deliveryDetails, cartItems, discount, promoCode, branchId } = req.body;
+  const { orderDetails, deliveryDetails, cartItems, discount, promoCode, branchId, userId, boodaiCoinsUsed } = req.body;
 
   if (!cartItems || !Array.isArray(cartItems) || cartItems.length === 0) {
     return res.status(400).json({ error: "Корзина пуста или содержит некорректные данные" });
@@ -508,11 +517,17 @@ app.post("/api/public/send-order", async (req, res) => {
   }
 
   try {
+    // Рассчитываем итоговую сумму
     const total = cartItems.reduce((sum, item) => sum + (Number(item.originalPrice) || 0) * item.quantity, 0);
     const discountedTotal = total * (1 - (discount || 0) / 100);
+    let finalTotal = discountedTotal;
+    let coinsUsed = Number(boodaiCoinsUsed) || 0;
+    let coinsEarned = total * 0.05; // 5% от оригинальной суммы
 
+    // Функция экранирования для Markdown
     const escapeMarkdown = (text) => (text ? text.replace(/([_*[\]()~`>#+-.!])/g, "\\$1") : "Нет");
 
+    // Формируем текст заказа
     const orderText = `
 📦 *Новый заказ:*
 🏪 Филиал: ${escapeMarkdown((await db.query("SELECT name FROM branches WHERE id = ?", [branchId]))[0][0]?.name || "Неизвестный филиал")}
@@ -526,9 +541,11 @@ ${cartItems.map((item) => `- ${escapeMarkdown(item.name)} (${item.quantity} шт
 
 💰 Итоговая стоимость: ${total.toFixed(2)} сом
 ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} сом` : "💸 Скидка не применена"}
-💰 Итоговая сумма: ${discountedTotal.toFixed(2)} сом
+${coinsUsed > 0 ? `📉 Использовано Boodai Coins: ${coinsUsed.toFixed(2)}` : ""}
+💰 Итоговая сумма: ${finalTotal.toFixed(2)} сом
     `;
 
+    // Сохраняем заказ в MySQL
     const [result] = await db.query(
       `
       INSERT INTO orders (branch_id, total, status, order_details, delivery_details, cart_items, discount, promo_code)
@@ -536,7 +553,7 @@ ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} �
     `,
       [
         branchId,
-        discountedTotal,
+        finalTotal,
         JSON.stringify(orderDetails),
         JSON.stringify(deliveryDetails),
         JSON.stringify(cartItems),
@@ -545,6 +562,7 @@ ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} �
       ]
     );
 
+    // Получаем данные филиала
     const [branch] = await db.query("SELECT name, telegram_chat_id FROM branches WHERE id = ?", [branchId]);
     if (branch.length === 0) {
       console.error(`Филиал с id ${branchId} не найден в базе данных`);
@@ -559,7 +577,7 @@ ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} �
       });
     }
 
-    const TELEGRAM_BOT_TOKEN = "7858016810:AAELHxlmZORP7iHEIWdqYKw-rHl-q3aB8yY";
+    // Отправляем уведомление о заказе в Telegram
     console.log(`Отправка заказа в Telegram для филиала "${branch[0].name}" (id: ${branchId}, chat_id: ${chatId})`);
     try {
       const response = await axios.post(
@@ -570,26 +588,96 @@ ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} �
           parse_mode: "Markdown",
         }
       );
-      console.log(`Сообщение успешно отправлено в Telegram:`, response.data);
+      console.log(`Сообщение о заказе успешно отправлено в Telegram:`, response.data);
     } catch (telegramError) {
-      console.error("Ошибка отправки в Telegram:", telegramError.response?.data || telegramError.message);
+      console.error("Ошибка отправки заказа в Telegram:", telegramError.response?.data || telegramError.message);
       const errorDescription = telegramError.response?.data?.description || telegramError.message;
       if (telegramError.response?.data?.error_code === 403) {
         return res.status(500).json({
           error: `Бот не имеет прав для отправки сообщений в группу (chat_id: ${chatId}). Убедитесь, что бот добавлен в группу и имеет права администратора.`,
         });
       }
-      return res.status(500).json({ error: `Ошибка отправки в Telegram: ${errorDescription}` });
+      return res.status(500).json({ error: `Ошибка отправки заказа в Telegram: ${errorDescription}` });
     }
 
-    res.status(200).json({ message: "Заказ успешно отправлен", orderId: result.insertId });
+    // Обработка Boodai Coins, если указан userId
+    let newBalance = 0;
+    if (userId) {
+      try {
+        // Получаем данные пользователя из Firestore
+        const userRef = firestore.collection("users").doc(userId);
+        const userDoc = await userRef.get();
+        if (!userDoc.exists) {
+          console.warn(`Пользователь с ID ${userId} не найден в Firestore`);
+        } else {
+          const userData = userDoc.data();
+          const currentCoins = Number(userData.boodaiCoins) || 0;
+          const userName = userData.name || "Неизвестный пользователь";
+
+          // Проверяем, достаточно ли монет для использования
+          if (coinsUsed > currentCoins) {
+            return res.status(400).json({ error: `Недостаточно Boodai Coins. Доступно: ${currentCoins.toFixed(2)}, требуется: ${coinsUsed.toFixed(2)}` });
+          }
+
+          // Рассчитываем новый баланс
+          newBalance = currentCoins - coinsUsed + coinsEarned;
+          finalTotal = Math.max(0, discountedTotal - coinsUsed);
+
+          // Обновляем баланс в Firestore
+          await userRef.update({ boodaiCoins: newBalance });
+
+          // Записываем транзакцию в Firestore
+          await firestore.collection("transactions").add({
+            userId,
+            type: "order",
+            amount: coinsEarned,
+            coinsUsed,
+            orderTotal: total,
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          });
+
+          // Формируем текст уведомления о Boodai Coins
+          const currencyText = `
+💰 *Транзакция Boodai Coins:*
+🏪 Филиал: ${escapeMarkdown(branch[0].name)}
+👤 Пользователь: ${escapeMarkdown(userName)} (ID: ${userId})
+📊 Начислено: ${coinsEarned.toFixed(2)} монет
+${coinsUsed > 0 ? `📉 Использовано: ${coinsUsed.toFixed(2)} монет` : ""}
+💸 Новый баланс: ${newBalance.toFixed(2)} монет
+📝 Заказ: ${total.toFixed(2)} сом
+📅 Дата: ${new Date().toLocaleString("ru-RU")}
+          `;
+
+          // Отправляем уведомление о Boodai Coins в Telegram
+          try {
+            const currencyResponse = await axios.post(
+              `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+              {
+                chat_id: chatId,
+                text: currencyText,
+                parse_mode: "Markdown",
+              }
+            );
+            console.log(`Уведомление о Boodai Coins отправлено в Telegram:`, currencyResponse.data);
+          } catch (currencyError) {
+            console.error("Ошибка отправки уведомления о Boodai Coins в Telegram:", currencyError.response?.data || currencyError.message);
+            // Не прерываем выполнение, так как заказ уже сохранён
+          }
+        }
+      } catch (firestoreError) {
+        console.error("Ошибка при обработке Boodai Coins в Firestore:", firestoreError.message);
+        // Не прерываем выполнение, так как заказ уже сохранён
+      }
+    }
+
+    res.status(200).json({ message: "Заказ успешно отправлен", orderId: result.insertId, boodaiCoins: newBalance });
   } catch (error) {
     console.error("Ошибка при отправке заказа:", error.message);
     res.status(500).json({ error: "Ошибка сервера: " + error.message });
   }
 });
 
-// Остальные маршруты
+// Остальные маршруты (без изменений)
 app.get("/", (req, res) => res.send("Booday Pizza API"));
 
 app.post("/admin/login", async (req, res) => {
@@ -693,7 +781,6 @@ app.get("/banners", authenticateToken, async (req, res) => {
   }
 });
 
-
 // Маршрут для получения одного баннера
 app.get("/banners/:id", async (req, res) => {
   const { id } = req.params;
@@ -722,6 +809,7 @@ app.get("/banners/:id", async (req, res) => {
     res.status(500).json({ error: "Ошибка сервера: " + err.message });
   }
 });
+
 // Маршрут для создания баннера
 app.post("/banners", authenticateToken, (req, res) => {
   upload(req, res, async (err) => {
@@ -777,6 +865,7 @@ app.post("/banners", authenticateToken, (req, res) => {
     }
   });
 });
+
 // Маршрут для обновления баннера
 app.put("/banners/:id", authenticateToken, (req, res) => {
   upload(req, res, async (err) => {
@@ -837,7 +926,6 @@ app.put("/banners/:id", authenticateToken, (req, res) => {
   });
 });
 
-
 app.get('/api/public/promo-codes/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -848,18 +936,17 @@ app.get('/api/public/promo-codes/:id', async (req, res) => {
     if (rows.length === 0) {
       return res.status(404).json({ error: 'Промокод не найден или недействителен' });
     }
-    res.json(rows[0]); // Возвращаем первый найденный промокод
+    res.json(rows[0]);
   } catch (err) {
     console.error('Ошибка при получении промокода:', err.message, err.stack);
     res.status(500).json({ error: 'Ошибка сервера: ' + err.message });
   }
 });
 
-
 app.delete("/banners/:id", authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
-    const [banner] = await db.query("SELECT image FROM banners WHERE id = ?", [id]);
+    const [banner] = await db.query("SELECT image FROM banners WHERE id = ?",EDC [id]);
     if (banner.length === 0) return res.status(404).json({ error: "Баннер не найден" });
 
     if (banner[0].image) {
@@ -1158,8 +1245,7 @@ app.put("/products/:id", authenticateToken, (req, res) => {
       if (req.file) {
         imageKey = await uploadToS3(req.file);
         if (existing[0].image) {
-          const oldKey = existing[0].image;
-          await deleteFromS3(oldKey);
+          await deleteFromS3(existing[0].image);
         }
       } else {
         imageKey = existing[0].image;
