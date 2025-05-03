@@ -17,7 +17,7 @@ app.use(express.json());
 const JWT_SECRET = "your_jwt_secret_key";
 
 // Инициализация Firebase Admin SDK
-const serviceAccount = require("./boodai-pizza-firebase-adminsdk.json"); // Укажите путь к вашему JSON-файлу
+const serviceAccount = require("boodai-pizza-firebase-adminsdk.json"); // Укажите путь к вашему JSON-файлу
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
