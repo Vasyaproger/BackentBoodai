@@ -8,7 +8,7 @@ const path = require("path");
 const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
 const { Upload } = require("@aws-sdk/lib-storage");
 const axios = require("axios");
-const admin = require("firebase-admin");
+const admin = require("firebase-admin"); // Добавляем Firebase Admin SDK
 
 const app = express();
 app.use(cors());
@@ -17,7 +17,7 @@ app.use(express.json());
 const JWT_SECRET = "your_jwt_secret_key";
 
 // Инициализация Firebase Admin SDK
-const serviceAccount = require("./boodai-pizza-firebase-adminsdk.json");
+const serviceAccount = require("boodai-pizza-firebase-adminsdk.json"); // Укажите путь к вашему JSON-файлу
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
@@ -53,21 +53,14 @@ const testS3Connection = async () => {
   }
 };
 
-// Настройка multer с фильтром типов файлов
+// Настройка multer для загрузки изображений
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // Ограничение по размеру (5MB)
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = ["image/jpeg", "image/png"];
-    if (!allowedTypes.includes(file.mimetype)) {
-      return cb(new Error("Только JPEG и PNG изображения разрешены"));
-    }
-    cb(null, true);
-  },
 }).single("image");
 
-// Функция для загрузки изображения в S3 с повторными попытками
-const uploadToS3 = async (file, retries = 3, delay = 1000) => {
+// Функция для загрузки изображения в S3
+const uploadToS3 = async (file) => {
   const key = `boody-images/${Date.now()}${path.extname(file.originalname)}`;
   const params = {
     Bucket: S3_BUCKET,
@@ -76,23 +69,16 @@ const uploadToS3 = async (file, retries = 3, delay = 1000) => {
     ContentType: file.mimetype,
   };
 
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      const upload = new Upload({
-        client: s3Client,
-        params,
-        timeout: 30000, // Таймаут 30 секунд
-      });
-      await upload.done();
-      return key;
-    } catch (err) {
-      console.error(`Попытка ${attempt} загрузки в S3 не удалась:`, err.message);
-      if (attempt === retries) {
-        console.error("Все попытки загрузки в S3 исчерпаны");
-        throw err;
-      }
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
+  try {
+    const upload = new Upload({
+      client: s3Client,
+      params,
+    });
+    await upload.done();
+    return key;
+  } catch (err) {
+    console.error("Ошибка при загрузке в S3:", err.message);
+    throw err;
   }
 };
 
@@ -130,16 +116,15 @@ const deleteFromS3 = async (key) => {
   }
 };
 
-// Подключение к базе данных MySQL с оптимизированным пулом
+// Подключение к базе данных MySQL
 const db = mysql.createPool({
   host: "vh438.timeweb.ru",
   user: "ch79145_boodai",
   password: "16162007",
   database: "ch79145_boodai",
   waitForConnections: true,
-  connectionLimit: 20, // Увеличено для большей пропускной способности
+  connectionLimit: 10,
   queueLimit: 0,
-  acquireTimeout: 10000, // Таймаут получения соединения 10 секунд
 });
 
 // Middleware для аутентификации токена
@@ -168,13 +153,12 @@ const optionalAuthenticateToken = (req, res, next) => {
   }
 };
 
-// Маршрут для получения изображения по ключу с кэшированием
+// Маршрут для получения изображения по ключу
 app.get("/product-image/:key", optionalAuthenticateToken, async (req, res) => {
   const { key } = req.params;
   try {
     const image = await getFromS3(`boody-images/${key}`);
     res.setHeader("Content-Type", image.ContentType || "image/jpeg");
-    res.setHeader("Cache-Control", "public, max-age=31536000"); // Кэширование на год
     image.Body.pipe(res);
   } catch (err) {
     console.error("Ошибка при отправке изображения клиенту:", err.message);
@@ -182,7 +166,7 @@ app.get("/product-image/:key", optionalAuthenticateToken, async (req, res) => {
   }
 });
 
-// Инициализация сервера с добавлением индексов
+// Инициализация сервера
 const initializeServer = async () => {
   try {
     console.log("Попытка подключения к MySQL...");
@@ -282,13 +266,6 @@ const initializeServer = async () => {
       console.log("Добавлена колонка is_pizza в таблицу products");
     }
 
-    // Создание индексов для оптимизации запросов
-    await connection.query("CREATE INDEX idx_products_branch_id ON products(branch_id)");
-    await connection.query("CREATE INDEX idx_products_category_id ON products(category_id)");
-    await connection.query("CREATE INDEX idx_banners_id ON banners(id)");
-    await connection.query("CREATE INDEX idx_stories_id ON stories(id)");
-    console.log("Индексы для таблиц products, banners, stories созданы");
-
     // Создание таблицы subcategories
     await connection.query(`
       CREATE TABLE IF NOT EXISTS subcategories (
@@ -363,9 +340,7 @@ const initializeServer = async () => {
         title VARCHAR(255),
         description TEXT,
         button_text VARCHAR(100),
-        promo_code_id INT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (promo_code_id) REFERENCES promo_codes(id) ON DELETE SET NULL
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
     console.log("Таблица banners проверена/создана");
@@ -387,11 +362,6 @@ const initializeServer = async () => {
     if (!bannerFields.includes("button_text")) {
       await connection.query("ALTER TABLE banners ADD COLUMN button_text VARCHAR(100)");
       console.log("Добавлена колонка button_text в таблицу banners");
-    }
-
-    if (!bannerFields.includes("promo_code_id")) {
-      await connection.query("ALTER TABLE banners ADD COLUMN promo_code_id INT, ADD FOREIGN KEY (promo_code_id) REFERENCES promo_codes(id) ON DELETE SET NULL");
-      console.log("Добавлена колонка promo_code_id в таблицу banners");
     }
 
     // Проверка и добавление колонок в таблицу discounts
@@ -432,7 +402,7 @@ const initializeServer = async () => {
 // Публичные маршруты
 app.get("/api/public/branches", async (req, res) => {
   try {
-    const [branches] = await db.query("SELECT id, name, address, telegram_chat_id FROM branches");
+    const [branches] = await db.query("SELECT id, name, address, telegram_chat_id FROM branches"); // Добавляем telegram_chat_id
     res.json(branches);
   } catch (err) {
     console.error("Ошибка при получении филиалов:", err.message);
@@ -492,19 +462,10 @@ app.get("/api/public/stories", async (req, res) => {
 
 app.get("/api/public/banners", async (req, res) => {
   try {
-    const [banners] = await db.query(`
-      SELECT b.*, pc.code AS promo_code, pc.discount_percent
-      FROM banners b
-      LEFT JOIN promo_codes pc ON b.promo_code_id = pc.id
-    `);
+    const [banners] = await db.query("SELECT * FROM banners");
     const bannersWithUrls = banners.map(banner => ({
       ...banner,
-      image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${banner.image.split("/").pop()}`,
-      promo_code: banner.promo_code ? {
-        id: banner.promo_code_id,
-        code: banner.promo_code,
-        discount_percent: banner.discount_percent || 0
-      } : null
+      image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${banner.image.split("/").pop()}`
     }));
     res.json(bannersWithUrls);
   } catch (err) {
@@ -516,24 +477,14 @@ app.get("/api/public/banners", async (req, res) => {
 app.get("/api/public/banners/:id", async (req, res) => {
   const { id } = req.params;
   try {
-    const [banners] = await db.query(`
-      SELECT b.*, pc.code AS promo_code, pc.discount_percent
-      FROM banners b
-      LEFT JOIN promo_codes pc ON b.promo_code_id = pc.id
-      WHERE b.id = ?
-    `, [id]);
+    const [banners] = await db.query("SELECT * FROM banners WHERE id = ?", [id]);
     if (banners.length === 0) {
       return res.status(404).json({ error: "Баннер не найден" });
     }
     const banner = banners[0];
     res.json({
       ...banner,
-      image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${banner.image.split("/").pop()}`,
-      promo_code: banner.promo_code ? {
-        id: banner.promo_code_id,
-        code: banner.promo_code,
-        discount_percent: banner.discount_percent || 0
-      } : null
+      image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${banner.image.split("/").pop()}`
     });
   } catch (err) {
     console.error("Ошибка при получении баннера:", err.message);
@@ -710,10 +661,12 @@ ${coinsUsed > 0 ? `📉 Использовано: ${coinsUsed.toFixed(2)} мон
             console.log(`Уведомление о Boodai Coins отправлено в Telegram:`, currencyResponse.data);
           } catch (currencyError) {
             console.error("Ошибка отправки уведомления о Boodai Coins в Telegram:", currencyError.response?.data || currencyError.message);
+            // Не прерываем выполнение, так как заказ уже сохранён
           }
         }
       } catch (firestoreError) {
         console.error("Ошибка при обработке Boodai Coins в Firestore:", firestoreError.message);
+        // Не прерываем выполнение, так как заказ уже сохранён
       }
     }
 
@@ -724,7 +677,7 @@ ${coinsUsed > 0 ? `📉 Использовано: ${coinsUsed.toFixed(2)} мон
   }
 });
 
-// Остальные маршруты
+// Остальные маршруты (без изменений)
 app.get("/", (req, res) => res.send("Booday Pizza API"));
 
 app.post("/admin/login", async (req, res) => {
@@ -857,7 +810,7 @@ app.get("/banners/:id", async (req, res) => {
   }
 });
 
-// Маршрут для создания баннера с проверкой promo_code_id
+// Маршрут для создания баннера
 app.post("/banners", authenticateToken, (req, res) => {
   upload(req, res, async (err) => {
     if (err) {
@@ -869,14 +822,6 @@ app.post("/banners", authenticateToken, (req, res) => {
 
     if (!req.file) {
       return res.status(400).json({ error: "Изображение обязательно" });
-    }
-
-    // Проверка promo_code_id
-    if (promo_code_id) {
-      const [promo] = await db.query("SELECT id FROM promo_codes WHERE id = ?", [promo_code_id]);
-      if (promo.length === 0) {
-        return res.status(400).json({ error: "Указанный промокод не существует" });
-      }
     }
 
     let imageKey;
@@ -921,7 +866,7 @@ app.post("/banners", authenticateToken, (req, res) => {
   });
 });
 
-// Маршрут для обновления баннера с проверкой promo_code_id
+// Маршрут для обновления баннера
 app.put("/banners/:id", authenticateToken, (req, res) => {
   upload(req, res, async (err) => {
     if (err) {
@@ -932,14 +877,6 @@ app.put("/banners/:id", authenticateToken, (req, res) => {
     const { id } = req.params;
     const { title, description, button_text, promo_code_id } = req.body;
     let imageKey;
-
-    // Проверка promo_code_id
-    if (promo_code_id) {
-      const [promo] = await db.query("SELECT id FROM promo_codes WHERE id = ?", [promo_code_id]);
-      if (promo.length === 0) {
-        return res.status(400).json({ error: "Указанный промокод не существует" });
-      }
-    }
 
     try {
       const [existing] = await db.query("SELECT image FROM banners WHERE id = ?", [id]);
@@ -1006,11 +943,10 @@ app.get('/api/public/promo-codes/:id', async (req, res) => {
   }
 });
 
-// Исправленный маршрут для удаления баннера
 app.delete("/banners/:id", authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
-    const [banner] = await db.query("SELECT image FROM banners WHERE id = ?", [id]);
+    const [banner] = await db.query("SELECT image FROM banners WHERE id = ?",EDC [id]);
     if (banner.length === 0) return res.status(404).json({ error: "Баннер не найден" });
 
     if (banner[0].image) {
