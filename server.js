@@ -8,7 +8,8 @@ const path = require("path");
 const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
 const { Upload } = require("@aws-sdk/lib-storage");
 const axios = require("axios");
-const admin = require("firebase-admin"); // Добавляем Firebase Admin SDK
+const admin = require("firebase-admin");
+const fs = require("fs").promises;
 
 const app = express();
 app.use(cors());
@@ -16,12 +17,22 @@ app.use(express.json());
 
 const JWT_SECRET = "your_jwt_secret_key";
 
-// Инициализация Firebase Admin SDK
-const serviceAccount = require("boodai-pizza-firebase-adminsdk.json"); // Укажите путь к вашему JSON-файлу
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
-const firestore = admin.firestore();
+// Проверка и инициализация Firebase Admin SDK
+const initializeFirebase = async () => {
+  const serviceAccountPath = "./boodai-pizza-firebase-adminsdk.json";
+  try {
+    await fs.access(serviceAccountPath);
+    const serviceAccount = require(serviceAccountPath);
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+    console.log("Firebase Admin SDK успешно инициализирован");
+    return admin.firestore();
+  } catch (err) {
+    console.error("Ошибка при инициализации Firebase Admin SDK:", err.message);
+    throw new Error(`Не удалось загрузить файл ${serviceAccountPath}. Убедитесь, что файл существует и путь правильный.`);
+  }
+};
 
 // Настройка S3Client для Timeweb Cloud
 const s3Client = new S3Client({
@@ -168,6 +179,15 @@ app.get("/product-image/:key", optionalAuthenticateToken, async (req, res) => {
 
 // Инициализация сервера
 const initializeServer = async () => {
+  let firestore;
+  try {
+    console.log("Инициализация Firebase...");
+    firestore = await initializeFirebase();
+  } catch (err) {
+    console.error("Не удалось инициализировать Firebase:", err.message);
+    process.exit(1);
+  }
+
   try {
     console.log("Попытка подключения к MySQL...");
     const connection = await db.getConnection();
@@ -402,7 +422,7 @@ const initializeServer = async () => {
 // Публичные маршруты
 app.get("/api/public/branches", async (req, res) => {
   try {
-    const [branches] = await db.query("SELECT id, name, address, telegram_chat_id FROM branches"); // Добавляем telegram_chat_id
+    const [branches] = await db.query("SELECT id, name, address, telegram_chat_id FROM branches");
     res.json(branches);
   } catch (err) {
     console.error("Ошибка при получении филиалов:", err.message);
@@ -946,7 +966,7 @@ app.get('/api/public/promo-codes/:id', async (req, res) => {
 app.delete("/banners/:id", authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
-    const [banner] = await db.query("SELECT image FROM banners WHERE id = ?",EDC [id]);
+    const [banner] = await db.query("SELECT image FROM banners WHERE id = ?", [id]);
     if (banner.length === 0) return res.status(404).json({ error: "Баннер не найден" });
 
     if (banner[0].image) {
