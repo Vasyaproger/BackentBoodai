@@ -5,7 +5,9 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const path = require("path");
-const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
+const sharp = require("sharp");
+const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, GetObjectCommandOutput } = require("@aws-sdk/client-s3");
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 
 const app = express();
 app.use(cors());
@@ -44,10 +46,15 @@ const upload = multer({
 // S3 Utility Functions
 const uploadToS3 = async (file) => {
   const key = `boody-images/${Date.now()}${path.extname(file.originalname)}`;
+  // Compress image to ~100KB
+  const compressedBuffer = await sharp(file.buffer)
+    .resize({ width: 800, withoutEnlargement: true }) // Resize to max 800px width
+    .jpeg({ quality: 80 }) // Compress to 80% quality
+    .toBuffer();
   const params = {
     Bucket: S3_BUCKET,
     Key: key,
-    Body: file.buffer,
+    Body: compressedBuffer,
     ContentType: file.mimetype,
   };
   await s3Client.send(new PutObjectCommand(params));
@@ -68,6 +75,15 @@ const deleteFromS3 = async (key) => {
     Key: key,
   };
   await s3Client.send(new DeleteObjectCommand(params));
+};
+
+// Generate pre-signed URL for S3
+const getPresignedUrl = async (key) => {
+  const command = new GetObjectCommand({
+    Bucket: S3_BUCKET,
+    Key: key,
+  });
+  return await getSignedUrl(s3Client, command, { expiresIn: 3600 }); // 1 hour expiry
 };
 
 // JWT Authentication Middleware
@@ -183,6 +199,17 @@ const initializeServer = async () => {
       )
     `);
 
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS discounts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        discount_percent INT NOT NULL,
+        start_date TIMESTAMP,
+        end_date TIMESTAMP,
+        is_active BOOLEAN DEFAULT TRUE
+      )
+    `);
+
     // Seed admin user
     const [users] = await connection.query("SELECT * FROM users WHERE email = ?", ["admin@boodaypizza.com"]);
     if (users.length === 0) {
@@ -224,12 +251,17 @@ app.get("/api/public/branches/:branchId/products", async (req, res) => {
   try {
     const [products] = await db.query(`
       SELECT p.id, p.name, p.description, p.price_small, p.price_medium, p.price_large, 
-             p.price_single AS price, p.image AS image_url, c.name AS category
+             p.price_single AS price, p.image AS image_key, c.name AS category
       FROM products p
       LEFT JOIN categories c ON p.category_id = c.id
       WHERE p.branch_id = ?
     `, [branchId]);
-    res.json(products);
+    // Add pre-signed URLs for images
+    const productsWithUrls = await Promise.all(products.map(async (product) => ({
+      ...product,
+      image_url: product.image_key ? await getPresignedUrl(product.image_key) : null,
+    })));
+    res.json(productsWithUrls);
   } catch (err) {
     res.status(500).json({ error: "Server error" });
   }
@@ -238,10 +270,10 @@ app.get("/api/public/branches/:branchId/products", async (req, res) => {
 app.get("/api/public/stories", async (req, res) => {
   try {
     const [stories] = await db.query("SELECT id, image FROM stories");
-    const storiesWithUrls = stories.map(story => ({
+    const storiesWithUrls = await Promise.all(stories.map(async (story) => ({
       id: story.id,
-      image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${story.image.split("/").pop()}`
-    }));
+      image: await getPresignedUrl(story.image),
+    })));
     res.json(storiesWithUrls);
   } catch (err) {
     res.status(500).json({ error: "Server error" });
@@ -251,10 +283,10 @@ app.get("/api/public/stories", async (req, res) => {
 app.get("/api/public/banners", async (req, res) => {
   try {
     const [banners] = await db.query("SELECT id, image, title, description, button_text FROM banners");
-    const bannersWithUrls = banners.map(banner => ({
+    const bannersWithUrls = await Promise.all(banners.map(async (banner) => ({
       ...banner,
-      image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${banner.image.split("/").pop()}`
-    }));
+      image: await getPresignedUrl(banner.image),
+    })));
     res.json(bannersWithUrls);
   } catch (err) {
     res.status(500).json({ error: "Server error" });
@@ -322,6 +354,7 @@ app.get("/product-image/:key", async (req, res) => {
   try {
     const image = await getFromS3(`boody-images/${req.params.key}`);
     res.setHeader("Content-Type", image.ContentType || "image/jpeg");
+    res.setHeader("Cache-Control", "public, max-age=3600"); // Cache for 1 hour
     image.Body.pipe(res);
   } catch (err) {
     res.status(500).json({ error: "Image retrieval error" });
@@ -341,6 +374,117 @@ app.post("/admin/login", async (req, res) => {
 
     const token = jwt.sign({ id: users[0].id, email }, JWT_SECRET, { expiresIn: "1h" });
     res.json({ token, user: { id: users[0].id, name: users[0].name, email } });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.get("/users", authenticateToken, async (req, res) => {
+  try {
+    const [users] = await db.query("SELECT id, name, email FROM users");
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/users", authenticateToken, async (req, res) => {
+  const { name, email, password } = req.body;
+  if (!name || !email || !password) return res.status(400).json({ error: "Name, email, and password required" });
+
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const [result] = await db.query("INSERT INTO users (name, email, password) VALUES (?, ?, ?)", [name, email, hashedPassword]);
+    res.status(201).json({ id: result.insertId, name, email });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.put("/users/:id", authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { name, email, password } = req.body;
+  if (!name || !email) return res.status(400).json({ error: "Name and email required" });
+
+  try {
+    const updates = { name, email };
+    if (password) updates.password = await bcrypt.hash(password, 10);
+    await db.query("UPDATE users SET name = ?, email = ?, password = ? WHERE id = ?", [name, email, updates.password || null, id]);
+    res.json({ id, name, email });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.delete("/users/:id", authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await db.query("DELETE FROM users WHERE id = ?", [id]);
+    res.json({ message: "User deleted" });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.get("/discounts", authenticateToken, async (req, res) => {
+  try {
+    const [discounts] = await db.query("SELECT * FROM discounts");
+    res.json(discounts);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/discounts", authenticateToken, async (req, res) => {
+  const { name, discountPercent, startDate, endDate, isActive } = req.body;
+  if (!name || !discountPercent) return res.status(400).json({ error: "Name and discount percent required" });
+
+  try {
+    const [result] = await db.query(
+      "INSERT INTO discounts (name, discount_percent, start_date, end_date, is_active) VALUES (?, ?, ?, ?, ?)",
+      [name, discountPercent, startDate || null, endDate || null, isActive !== undefined ? isActive : true]
+    );
+    res.status(201).json({
+      id: result.insertId,
+      name,
+      discount_percent: discountPercent,
+      start_date: startDate || null,
+      end_date: endDate || null,
+      is_active: isActive !== undefined ? isActive : true,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.put("/discounts/:id", authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { name, discountPercent, startDate, endDate, isActive } = req.body;
+  if (!name || !discountPercent) return res.status(400).json({ error: "Name and discount percent required" });
+
+  try {
+    await db.query(
+      "UPDATE discounts SET name = ?, discount_percent = ?, start_date = ?, end_date = ?, is_active = ? WHERE id = ?",
+      [name, discountPercent, startDate || null, endDate || null, isActive !== undefined ? isActive : true, id]
+    );
+    res.json({
+      id,
+      name,
+      discount_percent: discountPercent,
+      start_date: startDate || null,
+      end_date: endDate || null,
+      is_active: isActive !== undefined ? isActive : true,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.delete("/discounts/:id", authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await db.query("DELETE FROM discounts WHERE id = ?", [id]);
+    res.json({ message: "Discount deleted" });
   } catch (err) {
     res.status(500).json({ error: "Server error" });
   }
@@ -399,7 +543,11 @@ app.get("/products", authenticateToken, async (req, res) => {
       LEFT JOIN categories c ON p.category_id = c.id
       LEFT JOIN subcategories s ON p.sub_category_id = s.id
     `);
-    res.json(products);
+    const productsWithUrls = await Promise.all(products.map(async (product) => ({
+      ...product,
+      image_url: product.image ? await getPresignedUrl(product.image) : null,
+    })));
+    res.json(productsWithUrls);
   } catch (err) {
     res.status(500).json({ error: "Server error" });
   }
@@ -431,7 +579,10 @@ app.post("/products", authenticateToken, (req, res) => {
         [result.insertId]
       );
 
-      res.status(201).json(newProduct[0]);
+      res.status(201).json({
+        ...newProduct[0],
+        image_url: await getPresignedUrl(imageKey),
+      });
     } catch (err) {
       res.status(500).json({ error: "Server error" });
     }
@@ -468,7 +619,10 @@ app.put("/products/:id", authenticateToken, (req, res) => {
         [id]
       );
 
-      res.json(updatedProduct[0]);
+      res.json({
+        ...updatedProduct[0],
+        image_url: await getPresignedUrl(imageKey),
+      });
     } catch (err) {
       res.status(500).json({ error: "Server error" });
     }
@@ -492,10 +646,10 @@ app.delete("/products/:id", authenticateToken, async (req, res) => {
 app.get("/banners", authenticateToken, async (req, res) => {
   try {
     const [banners] = await db.query("SELECT id, image, title, description, button_text FROM banners");
-    const bannersWithUrls = banners.map(banner => ({
+    const bannersWithUrls = await Promise.all(banners.map(async (banner) => ({
       ...banner,
-      image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${banner.image.split("/").pop()}`
-    }));
+      image: await getPresignedUrl(banner.image),
+    })));
     res.json(bannersWithUrls);
   } catch (err) {
     res.status(500).json({ error: "Server error" });
@@ -504,7 +658,8 @@ app.get("/banners", authenticateToken, async (req, res) => {
 
 app.post("/banners", authenticateToken, (req, res) => {
   upload(req, res, async (err) => {
-    if (err) return res.status(400).json({ error: "Image upload error" });
+    if (err) return res.status(400).fi
+      json({ error: "Image upload error" });
     if (!req.file) return res.status(400).json({ error: "Image required" });
 
     const { title, description, button_text } = req.body;
@@ -517,10 +672,10 @@ app.post("/banners", authenticateToken, (req, res) => {
 
       res.status(201).json({
         id: result.insertId,
-        image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${imageKey.split("/").pop()}`,
+        image: await getPresignedUrl(imageKey),
         title,
         description,
-        button_text
+        button_text,
       });
     } catch (err) {
       res.status(500).json({ error: "Server error" });
@@ -549,10 +704,10 @@ app.put("/banners/:id", authenticateToken, (req, res) => {
 
       res.json({
         id,
-        image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${imageKey.split("/").pop()}`,
+        image: await getPresignedUrl(imageKey),
         title,
         description,
-        button_text
+        button_text,
       });
     } catch (err) {
       res.status(500).json({ error: "Server error" });
@@ -577,10 +732,10 @@ app.delete("/banners/:id", authenticateToken, async (req, res) => {
 app.get("/stories", authenticateToken, async (req, res) => {
   try {
     const [stories] = await db.query("SELECT id, image FROM stories");
-    const storiesWithUrls = stories.map(story => ({
+    const storiesWithUrls = await Promise.all(stories.map(async (story) => ({
       id: story.id,
-      image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${story.image.split("/").pop()}`
-    }));
+      image: await getPresignedUrl(story.image),
+    })));
     res.json(storiesWithUrls);
   } catch (err) {
     res.status(500).json({ error: "Server error" });
@@ -597,7 +752,7 @@ app.post("/stories", authenticateToken, (req, res) => {
       const [result] = await db.query("INSERT INTO stories (image) VALUES (?)", [imageKey]);
       res.status(201).json({
         id: result.insertId,
-        image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${imageKey.split("/").pop()}`
+        image: await getPresignedUrl(imageKey),
       });
     } catch (err) {
       res.status(500).json({ error: "Server error" });
