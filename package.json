@@ -7,17 +7,22 @@
     "dev": "nodemon server.js"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.245.0",
-    "@aws-sdk/lib-storage": "^3.245.0",
-    "axios": "^1.8.4",
+    "@aws-sdk/client-s3": "^3.802.0",
+    "@aws-sdk/lib-storage": "^3.802.0",
+    "axios": "^1.9.0",
     "bcryptjs": "^2.4.3",
+    "compression": "^1.8.0",
     "cors": "^2.8.5",
     "dotenv": "^16.0.3",
-    "express": "^4.18.2",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
     "firebase-admin": "^13.3.0",
-    "jsonwebtoken": "^9.0.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
-    "mysql2": "^3.6.0"
+    "mysql2": "^3.14.1",
+    "redis": "^5.0.0",
+    "sharp": "^0.34.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
