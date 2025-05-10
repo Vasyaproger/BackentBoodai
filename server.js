@@ -22,7 +22,7 @@ const serviceAccount = require("./boodai-pizza-firebase-adminsdk.json");
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
-console.log("Firebase Admin SDK инициализирован");
+console.log("Firebase Admin SDK успешно инициализирован");
 
 // Настройка S3Client для Timeweb Cloud
 const s3Client = new S3Client({
@@ -47,7 +47,7 @@ const testS3Connection = async () => {
       Body: "Это тестовый файл для проверки подключения к S3.",
     });
     await s3Client.send(command);
-    console.log("Успешно подключились к S3!");
+    console.log("Успешное подключение к S3!");
     await s3Client.send(new DeleteObjectCommand({ Bucket: S3_BUCKET, Key: "test-connection.txt" }));
   } catch (err) {
     console.error("Ошибка подключения к S3:", err.message);
@@ -81,7 +81,7 @@ const uploadToS3 = async (file) => {
     await upload.done();
     return key;
   } catch (err) {
-    console.error("Ошибка при загрузке в S3:", err.message);
+    console.error("Ошибка загрузки в S3:", err.message);
     throw err;
   }
 };
@@ -98,7 +98,7 @@ const getFromS3 = async (key) => {
     const data = await s3Client.send(command);
     return data;
   } catch (err) {
-    console.error("Ошибка при получении из S3:", err.message);
+    console.error("Ошибка получения из S3:", err.message);
     throw err;
   }
 };
@@ -113,7 +113,7 @@ const deleteFromS3 = async (key) => {
   try {
     const command = new DeleteObjectCommand(params);
     await s3Client.send(command);
-    console.log("Изображение удалено из S3:", key);
+    console.log("Изображение успешно удалено из S3:", key);
   } catch (err) {
     console.error("Ошибка удаления из S3:", err.message);
     throw err;
@@ -177,7 +177,7 @@ app.get("/product-image/:key", optionalAuthenticateToken, async (req, res) => {
     res.setHeader("Content-Type", image.ContentType || "image/jpeg");
     image.Body.pipe(res);
   } catch (err) {
-    console.error("Ошибка при отправке изображения:", err.message);
+    console.error("Ошибка отправки изображения:", err.message);
     res.status(404).json({ error: "Изображение не найдено" });
   }
 });
@@ -186,7 +186,7 @@ app.get("/product-image/:key", optionalAuthenticateToken, async (req, res) => {
 const initializeServer = async () => {
   try {
     const connection = await db.getConnection();
-    console.log("Подключено к MySQL успешно!");
+    console.log("Успешное подключение к MySQL!");
 
     // Создание таблицы products
     await connection.query(`
@@ -243,7 +243,7 @@ const initializeServer = async () => {
         );
       }
     }
-    console.log("Данные продуктов мигрированы в формат JSON");
+    console.log("Данные продуктов успешно мигрированы в формат JSON");
 
     // Создание таблицы branches
     await connection.query(`
@@ -371,23 +371,23 @@ const initializeServer = async () => {
         "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)",
         ["Админ", "admin@boodaypizza.com", hashedPassword, "admin"]
       );
-      console.log("Админ создан: admin@boodaypizza.com / admin123");
+      console.log("Админ успешно создан: admin@boodaypizza.com / admin123");
     }
 
-    // Добавление филиалов
+    // Добавление фили4алов
     const [branches] = await connection.query("SELECT * FROM branches");
     if (branches.length === 0) {
       await connection.query("INSERT INTO branches (name, telegram_chat_id) VALUES (?, ?)", ["BOODAI PIZZA", "-1002311447135"]);
       await connection.query("INSERT INTO branches (name, telegram_chat_id) VALUES (?, ?)", ["Район", "-1002638475628"]);
       await connection.query("INSERT INTO branches (name, telegram_chat_id) VALUES (?, ?)", ["Араванский", "-1002311447135"]);
       await connection.query("INSERT INTO branches (name, telegram_chat_id) VALUES (?, ?)", ["Ошский район", "-1002638475628"]);
-      console.log("Филиалы добавлены");
+      console.log("Филиалы успешно добавлены");
     }
 
     connection.release();
     await testS3Connection();
 
-    app.listen(5000, () => console.log("Сервер запущен на порту 5000"));
+    app.listen(5000, () => console.log("Сервер успешно запущен на порту 5000"));
   } catch (err) {
     console.error("Ошибка инициализации сервера:", err.message);
     process.exit(1);
@@ -400,7 +400,7 @@ app.get("/api/public/branches", async (req, res) => {
     const [branches] = await db.query("SELECT id, name, address, telegram_chat_id FROM branches");
     res.json(branches);
   } catch (err) {
-    console.error("Ошибка при получении филиалов:", err.message);
+    console.error("Ошибка получения филиалов:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -427,7 +427,7 @@ app.get("/api/public/branches/:branchId/products", async (req, res) => {
     }));
     res.json(parsedProducts);
   } catch (err) {
-    console.error("Ошибка при получении продуктов:", err.message);
+    console.error("Ошибка получения продуктов:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -444,7 +444,7 @@ app.get("/api/public/branches/:branchId/orders", async (req, res) => {
     `, [branchId]);
     res.json(orders);
   } catch (err) {
-    console.error("Ошибка при получении истории заказов:", err.message);
+    console.error("Ошибка получения истории заказов:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -458,7 +458,7 @@ app.get("/api/public/stories", async (req, res) => {
     }));
     res.json(storiesWithUrls);
   } catch (err) {
-    console.error("Ошибка при получении историй:", err.message);
+    console.error("Ошибка получения историй:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -479,7 +479,7 @@ app.get("/api/public/banners", async (req, res) => {
     }));
     res.json(bannersWithUrls);
   } catch (err) {
-    console.error("Ошибка при получении баннеров:", err.message);
+    console.error("Ошибка получения баннеров:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -505,7 +505,7 @@ app.get("/api/public/banners/:id", async (req, res) => {
         : null,
     });
   } catch (err) {
-    console.error("Ошибка при получении баннера:", err.message);
+    console.error("Ошибка получения баннера:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -522,7 +522,7 @@ app.post("/api/public/validate-promo", async (req, res) => {
     }
     res.json({ discount: promo[0].discount });
   } catch (err) {
-    console.error("Ошибка при проверке промокода:", err.message);
+    console.error("Ошибка проверки промокода:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -621,7 +621,7 @@ ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} �
 
       try {
         await admin.messaging().send(message);
-        console.log(`Push-уведомление отправлено для филиала "${branch[0].name}"`);
+        console.log(`Push-уведомление успешно отправлено для филиала "${branch[0].name}"`);
       } catch (fcmError) {
         console.error(`Ошибка отправки push-уведомления для филиала "${branch[0].name}":`, fcmError.message);
       }
@@ -629,9 +629,9 @@ ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} �
       console.warn(`Для филиала "${branch[0].name}" не настроен FCM-токен`);
     }
 
-    res.status(200).json({ message: "Заказ отправлен", orderId: result.insertId });
+    res.status(200).json({ message: "Заказ успешно отправлен", orderId: result.insertId });
   } catch (error) {
-    console.error("Ошибка при отправке заказа:", error.message);
+    console.error("Ошибка отправки заказа:", error.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -639,6 +639,7 @@ ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} �
 // Остальные маршруты
 app.get("/", (req, res) => res.send("API Booday Pizza"));
 
+// Обновленный маршрут входа для админа
 app.post("/admin/login", async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: "Введите email и пароль" });
@@ -656,8 +657,18 @@ app.post("/admin/login", async (req, res) => {
     }
 
     const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: "1h" });
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+    res.json({ 
+      token, 
+      user: { 
+        id: user.id, 
+        name: user.name, 
+        email: user.email, 
+        role: user.role,
+        authToken: token // Добавляем токен в ответ
+      } 
+    });
   } catch (err) {
+    console.error("Ошибка входа администратора:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -668,6 +679,7 @@ app.get("/branches", authenticateToken, restrictToAdmin, async (req, res) => {
     const [branches] = await db.query("SELECT * FROM branches");
     res.json(branches);
   } catch (err) {
+    console.error("Ошибка получения филиалов:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -695,7 +707,7 @@ app.get("/products", authenticateToken, restrictToAdmin, async (req, res) => {
     }));
     res.json(parsedProducts);
   } catch (err) {
-    console.error("Ошибка при получении продуктов:", err.message);
+    console.error("Ошибка получения продуктов:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -716,6 +728,7 @@ app.get("/discounts", authenticateToken, restrictToAdmin, async (req, res) => {
     }));
     res.json(parsedDiscounts);
   } catch (err) {
+    console.error("Ошибка получения скидок:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -729,6 +742,7 @@ app.get("/stories", authenticateToken, restrictToAdmin, async (req, res) => {
     }));
     res.json(storiesWithUrls);
   } catch (err) {
+    console.error("Ошибка получения историй:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -751,7 +765,7 @@ app.get("/banners", authenticateToken, restrictToAdmin, async (req, res) => {
     }));
     res.json(bannersWithUrls);
   } catch (err) {
-    console.error("Ошибка при получении баннеров:", err.message);
+    console.error("Ошибка получения баннеров:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -780,7 +794,7 @@ app.get("/banners/:id", async (req, res) => {
         : null,
     });
   } catch (err) {
-    console.error("Ошибка при получении баннера:", err.message);
+    console.error("Ошибка получения баннера:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -802,7 +816,7 @@ app.post("/banners", authenticateToken, restrictToAdmin, (req, res) => {
     try {
       imageKey = await uploadToS3(req.files.image[0]);
     } catch (s3Err) {
-      console.error("Ошибка при загрузке в S3:", s3Err.message);
+      console.error("Ошибка загрузки в S3:", s3Err.message);
       return res.status(500).json({ error: "Ошибка загрузки в S3" });
     }
 
@@ -835,7 +849,7 @@ app.post("/banners", authenticateToken, restrictToAdmin, (req, res) => {
           : null,
       });
     } catch (err) {
-      console.error("Ошибка при добавлении баннера:", err.message);
+      console.error("Ошибка добавления баннера:", err.message);
       res.status(500).json({ error: "Ошибка сервера" });
     }
   });
@@ -895,7 +909,7 @@ app.put("/banners/:id", authenticateToken, restrictToAdmin, (req, res) => {
           : null,
       });
     } catch (err) {
-      console.error("Ошибка при обновлении баннера:", err.message);
+      console.error("Ошибка обновления баннера:", err.message);
       res.status(500).json({ error: "Ошибка сервера" });
     }
   });
@@ -912,9 +926,9 @@ app.delete("/banners/:id", authenticateToken, restrictToAdmin, async (req, res) 
     }
 
     await db.query("DELETE FROM banners WHERE id = ?", [id]);
-    res.json({ message: "Баннер удален" });
+    res.json({ message: "Баннер успешно удален" });
   } catch (err) {
-    console.error("Ошибка при удалении баннера:", err.message);
+    console.error("Ошибка удаления баннера:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -935,6 +949,7 @@ app.get("/categories", authenticateToken, restrictToAdmin, async (req, res) => {
     }));
     res.json(parsedCategories);
   } catch (err) {
+    console.error("Ошибка получения категорий:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -944,6 +959,7 @@ app.get("/promo-codes", authenticateToken, restrictToAdmin, async (req, res) => 
     const [promoCodes] = await db.query("SELECT * FROM promo_codes");
     res.json(promoCodes);
   } catch (err) {
+    console.error("Ошибка получения промокодов:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -958,6 +974,7 @@ app.get("/promo-codes/check/:code", authenticateToken, restrictToAdmin, async (r
     if (promo.length === 0) return res.status(404).json({ error: "Промокод не найден или недействителен" });
     res.json(promo[0]);
   } catch (err) {
+    console.error("Ошибка проверки промокода:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -974,7 +991,7 @@ app.get("/api/public/promo-codes/:id", async (req, res) => {
     }
     res.json(rows[0]);
   } catch (err) {
-    console.error("Ошибка при получении промокода:", err.message);
+    console.error("Ошибка получения промокода:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -996,6 +1013,7 @@ app.post("/promo-codes", authenticateToken, restrictToAdmin, async (req, res) =>
       is_active: isActive !== undefined ? isActive : true,
     });
   } catch (err) {
+    console.error("Ошибка добавления промокода:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -1018,6 +1036,7 @@ app.put("/promo-codes/:id", authenticateToken, restrictToAdmin, async (req, res)
       is_active: isActive !== undefined ? isActive : true,
     });
   } catch (err) {
+    console.error("Ошибка обновления промокода:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -1026,8 +1045,9 @@ app.delete("/promo-codes/:id", authenticateToken, restrictToAdmin, async (req, r
   const { id } = req.params;
   try {
     await db.query("DELETE FROM promo_codes WHERE id = ?", [id]);
-    res.json({ message: "Промокод удален" });
+    res.json({ message: "Промокод успешно удален" });
   } catch (err) {
+    console.error("Ошибка удаления промокода:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -1043,6 +1063,7 @@ app.post("/branches", authenticateToken, restrictToAdmin, async (req, res) => {
     );
     res.status(201).json({ id: result.insertId, name, address, phone, telegram_chat_id, fcm_token });
   } catch (err) {
+    console.error("Ошибка добавления филиала:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -1059,6 +1080,7 @@ app.put("/branches/:id", authenticateToken, restrictToAdmin, async (req, res) =>
     );
     res.json({ id, name, address, phone, telegram_chat_id, fcm_token });
   } catch (err) {
+    console.error("Ошибка обновления филиала:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -1067,8 +1089,9 @@ app.delete("/branches/:id", authenticateToken, restrictToAdmin, async (req, res)
   const { id } = req.params;
   try {
     await db.query("DELETE FROM branches WHERE id = ?", [id]);
-    res.json({ message: "Филиал удален" });
+    res.json({ message: "Филиал успешно удален" });
   } catch (err) {
+    console.error("Ошибка удаления филиала:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -1081,6 +1104,7 @@ app.post("/categories", authenticateToken, restrictToAdmin, async (req, res) => 
     const [result] = await db.query("INSERT INTO categories (name) VALUES (?)", [name]);
     res.status(201).json({ id: result.insertId, name });
   } catch (err) {
+    console.error("Ошибка добавления категории:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -1094,6 +1118,7 @@ app.put("/categories/:id", authenticateToken, restrictToAdmin, async (req, res) 
     await db.query("UPDATE categories SET name = ? WHERE id = ?", [name, id]);
     res.json({ id, name });
   } catch (err) {
+    console.error("Ошибка обновления категории:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -1102,8 +1127,9 @@ app.delete("/categories/:id", authenticateToken, restrictToAdmin, async (req, re
   const { id } = req.params;
   try {
     await db.query("DELETE FROM categories WHERE id = ?", [id]);
-    res.json({ message: "Категория удалена" });
+    res.json({ message: "Категория успешно удалена" });
   } catch (err) {
+    console.error("Ошибка удаления категории:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -1119,6 +1145,7 @@ app.get("/subcategories", authenticateToken, restrictToAdmin, async (req, res) =
     );
     res.json(subcategories);
   } catch (err) {
+    console.error("Ошибка получения подкатегорий:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -1135,6 +1162,7 @@ app.post("/subcategories", authenticateToken, restrictToAdmin, async (req, res) 
     );
     res.status(201).json(newSubcategory[0]);
   } catch (err) {
+    console.error("Ошибка добавления подкатегории:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -1152,6 +1180,7 @@ app.put("/subcategories/:id", authenticateToken, restrictToAdmin, async (req, re
     );
     res.json(updatedSubcategory[0]);
   } catch (err) {
+    console.error("Ошибка обновления подкатегории:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -1160,8 +1189,9 @@ app.delete("/subcategories/:id", authenticateToken, restrictToAdmin, async (req,
   const { id } = req.params;
   try {
     await db.query("DELETE FROM subcategories WHERE id = ?", [id]);
-    res.json({ message: "Подкатегория удалена" });
+    res.json({ message: "Подкатегория успешно удалена" });
   } catch (err) {
+    console.error("Ошибка удаления подкатегории:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -1194,7 +1224,7 @@ app.post("/products", authenticateToken, restrictToAdmin, (req, res) => {
         }
       }
     } catch (s3Err) {
-      console.error("Ошибка при загрузке в S3:", s3Err.message);
+      console.error("Ошибка загрузки в S3:", s3Err.message);
       return res.status(500).json({ error: "Ошибка загрузки в S3" });
     }
 
@@ -1253,7 +1283,7 @@ app.post("/products", authenticateToken, restrictToAdmin, (req, res) => {
         sauces: newProduct[0].sauces ? JSON.parse(newProduct[0].sauces) : [],
       });
     } catch (err) {
-      console.error("Ошибка при добавлении продукта:", err.message);
+      console.error("Ошибка добавления продукта:", err.message);
       res.status(500).json({ error: "Ошибка сервера" });
     }
   });
@@ -1269,7 +1299,7 @@ app.put("/products/:id", authenticateToken, restrictToAdmin, (req, res) => {
     const { id } = req.params;
     const { name, description, price, size, isSpicy, branchId, categoryId, subCategoryId, sauces } = req.body;
 
-    try {
+try {
       const [existing] = await db.query("SELECT image FROM products WHERE id = ?", [id]);
       if (existing.length === 0) {
         return res.status(404).json({ error: "Продукт не найден" });
@@ -1349,7 +1379,7 @@ app.put("/products/:id", authenticateToken, restrictToAdmin, (req, res) => {
         sauces: updatedProduct[0].sauces ? JSON.parse(updatedProduct[0].sauces) : [],
       });
     } catch (err) {
-      console.error("Ошибка при обновлении продукта:", err.message);
+      console.error("Ошибка обновления продукта:", err.message);
       res.status(500).json({ error: "Ошибка сервера" });
     }
   });
@@ -1371,9 +1401,9 @@ app.delete("/products/:id", authenticateToken, restrictToAdmin, async (req, res)
     }
 
     await db.query("DELETE FROM products WHERE id = ?", [id]);
-    res.json({ message: "Продукт удален" });
+    res.json({ message: "Продукт успешно удален" });
   } catch (err) {
-    console.error("Ошибка при удалении продукта:", err.message);
+    console.error("Ошибка удаления продукта:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -1418,6 +1448,7 @@ app.post("/discounts", authenticateToken, restrictToAdmin, async (req, res) => {
       product_name: JSON.parse(newDiscount[0].product_name),
     });
   } catch (err) {
+    console.error("Ошибка добавления скидки:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -1468,6 +1499,7 @@ app.put("/discounts/:id", authenticateToken, restrictToAdmin, async (req, res) =
       product_name: JSON.parse(updatedDiscount[0].product_name),
     });
   } catch (err) {
+    console.error("Ошибка обновления скидки:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -1487,8 +1519,9 @@ app.delete("/discounts/:id", authenticateToken, restrictToAdmin, async (req, res
     if (discount.length === 0) return res.status(404).json({ error: "Скидка не найдена" });
 
     await db.query("DELETE FROM discounts WHERE id = ?", [id]);
-    res.json({ message: "Скидка удалена", product: { id: discount[0].product_id, name: JSON.parse(discount[0].product_name) } });
+    res.json({ message: "Скидка успешно удалена", product: { id: discount[0].product_id, name: JSON.parse(discount[0].product_name) } });
   } catch (err) {
+    console.error("Ошибка удаления скидки:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -1508,7 +1541,7 @@ app.post("/stories", authenticateToken, restrictToAdmin, (req, res) => {
     try {
       imageKey = await uploadToS3(req.files.image[0]);
     } catch (s3Err) {
-      console.error("Ошибка при загрузке в S3:", s3Err.message);
+      console.error("Ошибка загрузки в S3:", s3Err.message);
       return res.status(500).json({ error: "Ошибка загрузки в S3" });
     }
 
@@ -1519,7 +1552,7 @@ app.post("/stories", authenticateToken, restrictToAdmin, (req, res) => {
         image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${imageKey.split("/").pop()}`,
       });
     } catch (err) {
-      console.error("Ошибка при добавлении истории:", err.message);
+      console.error("Ошибка добавления истории:", err.message);
       res.status(500).json({ error: "Ошибка сервера" });
     }
   });
@@ -1556,7 +1589,7 @@ app.put("/stories/:id", authenticateToken, restrictToAdmin, (req, res) => {
         image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${imageKey.split("/").pop()}`,
       });
     } catch (err) {
-      console.error("Ошибка при обновлении истории:", err.message);
+      console.error("Ошибка 更新 истории:", err.message);
       res.status(500).json({ error: "Ошибка сервера" });
     }
   });
@@ -1573,9 +1606,9 @@ app.delete("/stories/:id", authenticateToken, restrictToAdmin, async (req, res) 
     }
 
     await db.query("DELETE FROM stories WHERE id = ?", [id]);
-    res.json({ message: "История удалена" });
+    res.json({ message: "История успешно удалена" });
   } catch (err) {
-    console.error("Ошибка при удалении истории:", err.message);
+    console.error("Ошибка удаления истории:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -1598,9 +1631,18 @@ app.post("/register", async (req, res) => {
       [name, email, hashedPassword, "user"]
     );
     const token = jwt.sign({ id: result.insertId, email, role: "user" }, JWT_SECRET, { expiresIn: "1h" });
-    res.status(201).json({ token, user: { id: result.insertId, name, email, role: "user" } });
+    res.status(201).json({ 
+      token, 
+      user: { 
+        id: result.insertId, 
+        name, 
+        email, 
+        role: "user",
+        authToken: token // Добавляем токен в ответ
+      } 
+    });
   } catch (err) {
-    console.error("Ошибка при регистрации:", err.message);
+    console.error("Ошибка регистрации:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -1624,9 +1666,18 @@ app.post("/login", async (req, res) => {
     }
 
     const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: "1h" });
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+    res.json({ 
+      token, 
+      user: { 
+        id: user.id, 
+        name: user.name, 
+        email: user.email, 
+        role: user.role,
+        authToken: token // Добавляем токен в ответ
+      } 
+    });
   } catch (err) {
-    console.error("Ошибка при входе:", err.message);
+    console.error("Ошибка входа:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -1636,7 +1687,7 @@ app.get("/users", authenticateToken, restrictToAdmin, async (req, res) => {
     const [users] = await db.query("SELECT id, name, email, role FROM users");
     res.json(users);
   } catch (err) {
-    console.error("Ошибка при получении пользователей:", err.message);
+    console.error("Ошибка получения пользователей:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
