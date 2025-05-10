@@ -142,6 +142,20 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
+// Middleware для ограничения доступа только администраторам
+const restrictToAdmin = async (req, res, next) => {
+  try {
+    const [users] = await db.query("SELECT role FROM users WHERE id = ?", [req.user.id]);
+    if (users.length === 0 || users[0].role !== "admin") {
+      return res.status(403).json({ error: "Доступ запрещен: требуется роль администратора" });
+    }
+    next();
+  } catch (err) {
+    console.error("Ошибка проверки роли администратора:", err.message);
+    res.status(500).json({ error: "Ошибка сервера" });
+  }
+};
+
 // Опциональная аутентификация для маршрута изображений
 const optionalAuthenticateToken = (req, res, next) => {
   const token = req.headers["authorization"]?.split(" ")[1];
@@ -239,7 +253,7 @@ const initializeServer = async () => {
         address VARCHAR(255),
         phone VARCHAR(20),
         telegram_chat_id VARCHAR(50),
-        fcm_token VARCHAR(255), -- Добавлено поле для хранения FCM-токена филиала
+        fcm_token VARCHAR(255),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -336,13 +350,14 @@ const initializeServer = async () => {
     `);
     console.log("Таблица banners проверена/создана");
 
-    // Создание таблицы users
+    // Создание таблицы users с полем role
     await connection.query(`
       CREATE TABLE IF NOT EXISTS users (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
         email VARCHAR(255) NOT NULL UNIQUE,
         password VARCHAR(255) NOT NULL,
+        role ENUM('admin', 'user') DEFAULT 'user',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -352,7 +367,10 @@ const initializeServer = async () => {
     const [users] = await connection.query("SELECT * FROM users WHERE email = ?", ["admin@boodaypizza.com"]);
     if (users.length === 0) {
       const hashedPassword = await bcrypt.hash("admin123", 10);
-      await connection.query("INSERT INTO users (name, email, password) VALUES (?, ?, ?)", ["Админ", "admin@boodaypizza.com", hashedPassword]);
+      await connection.query(
+        "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)",
+        ["Админ", "admin@boodaypizza.com", hashedPassword, "admin"]
+      );
       console.log("Админ создан: admin@boodaypizza.com / admin123");
     }
 
@@ -633,14 +651,19 @@ app.post("/admin/login", async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(401).json({ error: "Неверный email или пароль" });
 
-    const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: "1h" });
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
+    if (user.role !== "admin") {
+      return res.status(403).json({ error: "Доступ запрещен: требуется роль администратора" });
+    }
+
+    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: "1h" });
+    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
   } catch (err) {
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
 
-app.get("/branches", authenticateToken, async (req, res) => {
+// Админские маршруты с проверкой роли администратора
+app.get("/branches", authenticateToken, restrictToAdmin, async (req, res) => {
   try {
     const [branches] = await db.query("SELECT * FROM branches");
     res.json(branches);
@@ -649,7 +672,7 @@ app.get("/branches", authenticateToken, async (req, res) => {
   }
 });
 
-app.get("/products", authenticateToken, async (req, res) => {
+app.get("/products", authenticateToken, restrictToAdmin, async (req, res) => {
   try {
     const [products] = await db.query(
       `
@@ -677,7 +700,7 @@ app.get("/products", authenticateToken, async (req, res) => {
   }
 });
 
-app.get("/discounts", authenticateToken, async (req, res) => {
+app.get("/discounts", authenticateToken, restrictToAdmin, async (req, res) => {
   try {
     const [discounts] = await db.query(
       `
@@ -697,7 +720,7 @@ app.get("/discounts", authenticateToken, async (req, res) => {
   }
 });
 
-app.get("/stories", authenticateToken, async (req, res) => {
+app.get("/stories", authenticateToken, restrictToAdmin, async (req, res) => {
   try {
     const [stories] = await db.query("SELECT * FROM stories");
     const storiesWithUrls = stories.map((story) => ({
@@ -710,7 +733,7 @@ app.get("/stories", authenticateToken, async (req, res) => {
   }
 });
 
-app.get("/banners", authenticateToken, async (req, res) => {
+app.get("/banners", authenticateToken, restrictToAdmin, async (req, res) => {
   try {
     const [banners] = await db.query(
       `
@@ -762,7 +785,7 @@ app.get("/banners/:id", async (req, res) => {
   }
 });
 
-app.post("/banners", authenticateToken, (req, res) => {
+app.post("/banners", authenticateToken, restrictToAdmin, (req, res) => {
   upload(req, res, async (err) => {
     if (err) {
       console.error("Ошибка загрузки изображения:", err.message);
@@ -818,7 +841,7 @@ app.post("/banners", authenticateToken, (req, res) => {
   });
 });
 
-app.put("/banners/:id", authenticateToken, (req, res) => {
+app.put("/banners/:id", authenticateToken, restrictToAdmin, (req, res) => {
   upload(req, res, async (err) => {
     if (err) {
       console.error("Ошибка загрузки изображения:", err.message);
@@ -878,7 +901,7 @@ app.put("/banners/:id", authenticateToken, (req, res) => {
   });
 });
 
-app.delete("/banners/:id", authenticateToken, async (req, res) => {
+app.delete("/banners/:id", authenticateToken, restrictToAdmin, async (req, res) => {
   const { id } = req.params;
   try {
     const [banner] = await db.query("SELECT image FROM banners WHERE id = ?", [id]);
@@ -896,7 +919,7 @@ app.delete("/banners/:id", authenticateToken, async (req, res) => {
   }
 });
 
-app.get("/categories", authenticateToken, async (req, res) => {
+app.get("/categories", authenticateToken, restrictToAdmin, async (req, res) => {
   try {
     const [categories] = await db.query(
       `
@@ -916,7 +939,7 @@ app.get("/categories", authenticateToken, async (req, res) => {
   }
 });
 
-app.get("/promo-codes", authenticateToken, async (req, res) => {
+app.get("/promo-codes", authenticateToken, restrictToAdmin, async (req, res) => {
   try {
     const [promoCodes] = await db.query("SELECT * FROM promo_codes");
     res.json(promoCodes);
@@ -925,7 +948,7 @@ app.get("/promo-codes", authenticateToken, async (req, res) => {
   }
 });
 
-app.get("/promo-codes/check/:code", authenticateToken, async (req, res) => {
+app.get("/promo-codes/check/:code", authenticateToken, restrictToAdmin, async (req, res) => {
   const { code } = req.params;
   try {
     const [promo] = await db.query(
@@ -956,7 +979,7 @@ app.get("/api/public/promo-codes/:id", async (req, res) => {
   }
 });
 
-app.post("/promo-codes", authenticateToken, async (req, res) => {
+app.post("/promo-codes", authenticateToken, restrictToAdmin, async (req, res) => {
   const { code, discountPercent, expiresAt, isActive } = req.body;
   if (!code || !discountPercent) return res.status(400).json({ error: "Код и процент скидки обязательны" });
 
@@ -977,7 +1000,7 @@ app.post("/promo-codes", authenticateToken, async (req, res) => {
   }
 });
 
-app.put("/promo-codes/:id", authenticateToken, async (req, res) => {
+app.put("/promo-codes/:id", authenticateToken, restrictToAdmin, async (req, res) => {
   const { id } = req.params;
   const { code, discountPercent, expiresAt, isActive } = req.body;
   if (!code || !discountPercent) return res.status(400).json({ error: "Код и процент скидки обязательны" });
@@ -999,7 +1022,7 @@ app.put("/promo-codes/:id", authenticateToken, async (req, res) => {
   }
 });
 
-app.delete("/promo-codes/:id", authenticateToken, async (req, res) => {
+app.delete("/promo-codes/:id", authenticateToken, restrictToAdmin, async (req, res) => {
   const { id } = req.params;
   try {
     await db.query("DELETE FROM promo_codes WHERE id = ?", [id]);
@@ -1009,7 +1032,7 @@ app.delete("/promo-codes/:id", authenticateToken, async (req, res) => {
   }
 });
 
-app.post("/branches", authenticateToken, async (req, res) => {
+app.post("/branches", authenticateToken, restrictToAdmin, async (req, res) => {
   const { name, address, phone, telegram_chat_id, fcm_token } = req.body;
   if (!name) return res.status(400).json({ error: "Название филиала обязательно" });
 
@@ -1024,7 +1047,7 @@ app.post("/branches", authenticateToken, async (req, res) => {
   }
 });
 
-app.put("/branches/:id", authenticateToken, async (req, res) => {
+app.put("/branches/:id", authenticateToken, restrictToAdmin, async (req, res) => {
   const { id } = req.params;
   const { name, address, phone, telegram_chat_id, fcm_token } = req.body;
   if (!name) return res.status(400).json({ error: "Название филиала обязательно" });
@@ -1040,7 +1063,7 @@ app.put("/branches/:id", authenticateToken, async (req, res) => {
   }
 });
 
-app.delete("/branches/:id", authenticateToken, async (req, res) => {
+app.delete("/branches/:id", authenticateToken, restrictToAdmin, async (req, res) => {
   const { id } = req.params;
   try {
     await db.query("DELETE FROM branches WHERE id = ?", [id]);
@@ -1050,7 +1073,7 @@ app.delete("/branches/:id", authenticateToken, async (req, res) => {
   }
 });
 
-app.post("/categories", authenticateToken, async (req, res) => {
+app.post("/categories", authenticateToken, restrictToAdmin, async (req, res) => {
   const { name } = req.body;
   if (!name) return res.status(400).json({ error: "Название категории обязательно" });
 
@@ -1062,7 +1085,7 @@ app.post("/categories", authenticateToken, async (req, res) => {
   }
 });
 
-app.put("/categories/:id", authenticateToken, async (req, res) => {
+app.put("/categories/:id", authenticateToken, restrictToAdmin, async (req, res) => {
   const { id } = req.params;
   const { name } = req.body;
   if (!name) return res.status(400).json({ error: "Название категории обязательно" });
@@ -1075,7 +1098,7 @@ app.put("/categories/:id", authenticateToken, async (req, res) => {
   }
 });
 
-app.delete("/categories/:id", authenticateToken, async (req, res) => {
+app.delete("/categories/:id", authenticateToken, restrictToAdmin, async (req, res) => {
   const { id } = req.params;
   try {
     await db.query("DELETE FROM categories WHERE id = ?", [id]);
@@ -1085,7 +1108,7 @@ app.delete("/categories/:id", authenticateToken, async (req, res) => {
   }
 });
 
-app.get("/subcategories", authenticateToken, async (req, res) => {
+app.get("/subcategories", authenticateToken, restrictToAdmin, async (req, res) => {
   try {
     const [subcategories] = await db.query(
       `
@@ -1100,7 +1123,7 @@ app.get("/subcategories", authenticateToken, async (req, res) => {
   }
 });
 
-app.post("/subcategories", authenticateToken, async (req, res) => {
+app.post("/subcategories", authenticateToken, restrictToAdmin, async (req, res) => {
   const { name, categoryId } = req.body;
   if (!name || !categoryId) return res.status(400).json({ error: "Название и категория обязательны" });
 
@@ -1116,7 +1139,7 @@ app.post("/subcategories", authenticateToken, async (req, res) => {
   }
 });
 
-app.put("/subcategories/:id", authenticateToken, async (req, res) => {
+app.put("/subcategories/:id", authenticateToken, restrictToAdmin, async (req, res) => {
   const { id } = req.params;
   const { name, categoryId } = req.body;
   if (!name || !categoryId) return res.status(400).json({ error: "Название и категория обязательны" });
@@ -1133,7 +1156,7 @@ app.put("/subcategories/:id", authenticateToken, async (req, res) => {
   }
 });
 
-app.delete("/subcategories/:id", authenticateToken, async (req, res) => {
+app.delete("/subcategories/:id", authenticateToken, restrictToAdmin, async (req, res) => {
   const { id } = req.params;
   try {
     await db.query("DELETE FROM subcategories WHERE id = ?", [id]);
@@ -1143,7 +1166,7 @@ app.delete("/subcategories/:id", authenticateToken, async (req, res) => {
   }
 });
 
-app.post("/products", authenticateToken, (req, res) => {
+app.post("/products", authenticateToken, restrictToAdmin, (req, res) => {
   upload(req, res, async (err) => {
     if (err) {
       console.error("Ошибка загрузки изображения:", err.message);
@@ -1236,7 +1259,7 @@ app.post("/products", authenticateToken, (req, res) => {
   });
 });
 
-app.put("/products/:id", authenticateToken, (req, res) => {
+app.put("/products/:id", authenticateToken, restrictToAdmin, (req, res) => {
   upload(req, res, async (err) => {
     if (err) {
       console.error("Ошибка загрузки изображения:", err.message);
@@ -1332,7 +1355,7 @@ app.put("/products/:id", authenticateToken, (req, res) => {
   });
 });
 
-app.delete("/products/:id", authenticateToken, async (req, res) => {
+app.delete("/products/:id", authenticateToken, restrictToAdmin, async (req, res) => {
   const { id } = req.params;
   try {
     const [product] = await db.query("SELECT image FROM products WHERE id = ?", [id]);
@@ -1355,7 +1378,7 @@ app.delete("/products/:id", authenticateToken, async (req, res) => {
   }
 });
 
-app.post("/discounts", authenticateToken, async (req, res) => {
+app.post("/discounts", authenticateToken, restrictToAdmin, async (req, res) => {
   const { productId, discountPercent, expiresAt, isActive } = req.body;
   if (!productId || !discountPercent) return res.status(400).json({ error: "ID продукта и процент скидки обязательны" });
   if (discountPercent < 1 || discountPercent > 100) return res.status(400).json({ error: "Процент скидки должен быть от 1 до 100" });
@@ -1399,7 +1422,7 @@ app.post("/discounts", authenticateToken, async (req, res) => {
   }
 });
 
-app.put("/discounts/:id", authenticateToken, async (req, res) => {
+app.put("/discounts/:id", authenticateToken, restrictToAdmin, async (req, res) => {
   const { id } = req.params;
   const { productId, discountPercent, expiresAt, isActive } = req.body;
   if (!productId || !discountPercent) return res.status(400).json({ error: "ID продукта и процент скидки обязательны" });
@@ -1449,7 +1472,7 @@ app.put("/discounts/:id", authenticateToken, async (req, res) => {
   }
 });
 
-app.delete("/discounts/:id", authenticateToken, async (req, res) => {
+app.delete("/discounts/:id", authenticateToken, restrictToAdmin, async (req, res) => {
   const { id } = req.params;
   try {
     const [discount] = await db.query(
@@ -1470,7 +1493,7 @@ app.delete("/discounts/:id", authenticateToken, async (req, res) => {
   }
 });
 
-app.post("/stories", authenticateToken, (req, res) => {
+app.post("/stories", authenticateToken, restrictToAdmin, (req, res) => {
   upload(req, res, async (err) => {
     if (err) {
       console.error("Ошибка загрузки изображения:", err.message);
@@ -1502,7 +1525,7 @@ app.post("/stories", authenticateToken, (req, res) => {
   });
 });
 
-app.put("/stories/:id", authenticateToken, (req, res) => {
+app.put("/stories/:id", authenticateToken, restrictToAdmin, (req, res) => {
   upload(req, res, async (err) => {
     if (err) {
       console.error("Ошибка загрузки изображения:", err.message);
@@ -1539,7 +1562,7 @@ app.put("/stories/:id", authenticateToken, (req, res) => {
   });
 });
 
-app.delete("/stories/:id", authenticateToken, async (req, res) => {
+app.delete("/stories/:id", authenticateToken, restrictToAdmin, async (req, res) => {
   const { id } = req.params;
   try {
     const [story] = await db.query("SELECT image FROM stories WHERE id = ?", [id]);
@@ -1570,9 +1593,12 @@ app.post("/register", async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const [result] = await db.query("INSERT INTO users (name, email, password) VALUES (?, ?, ?)", [name, email, hashedPassword]);
-    const token = jwt.sign({ id: result.insertId, email }, JWT_SECRET, { expiresIn: "1h" });
-    res.status(201).json({ token, user: { id: result.insertId, name, email } });
+    const [result] = await db.query(
+      "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)",
+      [name, email, hashedPassword, "user"]
+    );
+    const token = jwt.sign({ id: result.insertId, email, role: "user" }, JWT_SECRET, { expiresIn: "1h" });
+    res.status(201).json({ token, user: { id: result.insertId, name, email, role: "user" } });
   } catch (err) {
     console.error("Ошибка при регистрации:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
@@ -1597,17 +1623,17 @@ app.post("/login", async (req, res) => {
       return res.status(401).json({ error: "Неверный email или пароль" });
     }
 
-    const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: "1h" });
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
+    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: "1h" });
+    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
   } catch (err) {
     console.error("Ошибка при входе:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
 
-app.get("/users", authenticateToken, async (req, res) => {
+app.get("/users", authenticateToken, restrictToAdmin, async (req, res) => {
   try {
-    const [users] = await db.query("SELECT id, name, email FROM users");
+    const [users] = await db.query("SELECT id, name, email, role FROM users");
     res.json(users);
   } catch (err) {
     console.error("Ошибка при получении пользователей:", err.message);
