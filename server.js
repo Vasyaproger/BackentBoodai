@@ -1563,7 +1563,7 @@ app.post("/login", async (req, res) => {
     console.error("Ошибка при входе:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
-});//222
+});
 
 app.get("/users", authenticateToken, async (req, res) => {
   try {
