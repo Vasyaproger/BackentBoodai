@@ -1,4 +1,3 @@
-require("dotenv").config();
 const express = require("express");
 const mysql = require("mysql2/promise");
 const cors = require("cors");
@@ -14,20 +13,20 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret_key";
+const JWT_SECRET = "your_jwt_secret_key";
 
 // Настройка S3Client для Timeweb Cloud
 const s3Client = new S3Client({
   credentials: {
-    accessKeyId: process.env.S3_ACCESS_KEY || "DN1NLZTORA2L6NZ529JJ",
-    secretAccessKey: process.env.S3_SECRET_KEY || "iGg3syd3UiWzhoYbYlEEDSVX1HHVmWUptrBt81Y8",
+    accessKeyId: "DN1NLZTORA2L6NZ529JJ",
+    secretAccessKey: "iGg3syd3UiWzhoYbYlEEDSVX1HHVmWUptrBt81Y8",
   },
-  endpoint: process.env.S3_ENDPOINT || "https://s3.twcstorage.ru",
-  region: process.env.S3_REGION || "ru-1",
+  endpoint: "https://s3.twcstorage.ru",
+  region: "ru-1",
   forcePathStyle: true,
 });
 
-const S3_BUCKET = process.env.S3_BUCKET || "4eeafbc6-4af2cd44-4c23-4530-a2bf-750889dfdf75";
+const S3_BUCKET = "4eeafbc6-4af2cd44-4c23-4530-a2bf-750889dfdf75";
 
 // Проверка подключения к S3
 const testS3Connection = async () => {
@@ -46,9 +45,12 @@ const testS3Connection = async () => {
 };
 
 // Настройка multer для загрузки изображений
+// Настройка multer для загрузки изображений
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // Ограничение по размеру (5MB)
+  limits: {
+    fileSize: 5 * 1024 * 1024 // Ограничение по размеру (5MB)
+  }
 }).single("image");
 
 // Функция для загрузки изображения в S3
@@ -110,10 +112,10 @@ const deleteFromS3 = async (key) => {
 
 // Подключение к базе данных
 const db = mysql.createPool({
-  host: process.env.MYSQL_HOST || "boodaikg.com",
-  user: process.env.MYSQL_USER || "ch79145_boodai",
-  password: process.env.MYSQL_PASSWORD || "16162007",
-  database: process.env.MYSQL_DATABASE || "ch79145_boodai",
+  host: "boodaikg.com",
+  user: "ch79145_boodai",
+  password: "16162007",
+  database: "ch79145_boodai",
 });
 
 // Middleware для аутентификации токена
@@ -407,7 +409,7 @@ app.get("/api/public/stories", async (req, res) => {
     const [stories] = await db.query("SELECT * FROM stories");
     const storiesWithUrls = stories.map(story => ({
       ...story,
-      image: `${process.env.BASE_URL || "https://nukesul-brepb-651f.twc1.net"}/product-image/${story.image.split("/").pop()}`
+      image: `https://nukesul-brepb-651f.twc1.net/product-image/${story.image.split("/").pop()}`
     }));
     res.json(storiesWithUrls);
   } catch (err) {
@@ -499,8 +501,9 @@ ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} �
     }
 
     // Проверка TELEGRAM_BOT_TOKEN
-    if (!process.env.TELEGRAM_BOT_TOKEN) {
-      console.error("TELEGRAM_BOT_TOKEN не указан в переменных окружения");
+    const TELEGRAM_BOT_TOKEN = ""; // Замените на ваш токен Telegram бота
+    if (!TELEGRAM_BOT_TOKEN) {
+      console.error("TELEGRAM_BOT_TOKEN не указан");
       return res.status(500).json({ error: "Ошибка сервера: TELEGRAM_BOT_TOKEN не настроен" });
     }
 
@@ -508,7 +511,7 @@ ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} �
     console.log(`Отправка заказа в Telegram для филиала "${branch[0].name}" (id: ${branchId}, chat_id: ${chatId})`);
     try {
       const response = await axios.post(
-        `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`,
+        `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
         {
           chat_id: chatId,
           text: orderText,
@@ -606,7 +609,7 @@ app.get("/stories", authenticateToken, async (req, res) => {
     const [stories] = await db.query("SELECT * FROM stories");
     const storiesWithUrls = stories.map(story => ({
       ...story,
-      image: `${process.env.BASE_URL || "https://nukesul-brepb-651f.twc1.net"}/product-image/${story.image.split("/").pop()}`
+      image: `https://nukesul-brepb-651f.twc1.net/product-image/${story.image.split("/").pop()}`
     }));
     res.json(storiesWithUrls);
   } catch (err) {
@@ -1087,7 +1090,7 @@ app.post("/stories", authenticateToken, (req, res) => {
 
     try {
       const [result] = await db.query("INSERT INTO stories (image) VALUES (?)", [imageKey]);
-      res.status(201).json({ id: result.insertId, image: `${process.env.BASE_URL || "https://nukesul-brepb-651f.twc1.net"}/product-image/${imageKey.split("/").pop()}` });
+      res.status(201).json({ id: result.insertId, image: `https://nukesul-brepb-651f.twc1.net/product-image/${imageKey.split("/").pop()}` });
     } catch (err) {
       console.error("Ошибка при добавлении истории:", err.message);
       res.status(500).json({ error: "Ошибка сервера: " + err.message });
@@ -1121,7 +1124,7 @@ app.put("/stories/:id", authenticateToken, (req, res) => {
       }
 
       await db.query("UPDATE stories SET image = ? WHERE id = ?", [imageKey, id]);
-      res.json({ id, image: `${process.env.BASE_URL || "https://nukesul-brepb-651f.twc1.net"}/product-image/${imageKey.split("/").pop()}` });
+      res.json({ id, image: `https://nukesul-brepb-651f.twc1.net/product-image/${imageKey.split("/").pop()}` });
     } catch (err) {
       console.error("Ошибка при обновлении истории:", err.message);
       res.status(500).json({ error: "Ошибка сервера: " + err.message });
