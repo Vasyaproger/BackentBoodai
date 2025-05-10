@@ -8,6 +8,7 @@ const path = require("path");
 const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
 const { Upload } = require("@aws-sdk/lib-storage");
 const axios = require("axios");
+const admin = require("firebase-admin");
 
 const app = express();
 app.use(cors());
@@ -15,6 +16,13 @@ app.use(express.json());
 
 // Секретный ключ для JWT
 const JWT_SECRET = "your_jwt_secret_key";
+
+// Инициализация Firebase Admin SDK
+const serviceAccount = require("./boodai-pizza-firebase-adminsdk.json");
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+console.log("Firebase Admin SDK инициализирован");
 
 // Настройка S3Client для Timeweb Cloud
 const s3Client = new S3Client({
@@ -231,6 +239,7 @@ const initializeServer = async () => {
         address VARCHAR(255),
         phone VARCHAR(20),
         telegram_chat_id VARCHAR(50),
+        fcm_token VARCHAR(255), -- Добавлено поле для хранения FCM-токена филиала
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -564,21 +573,43 @@ ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} �
       ]
     );
 
-    const [branch] = await db.query("SELECT name, telegram_chat_id FROM branches WHERE id = ?", [branchId]);
+    const [branch] = await db.query("SELECT name, telegram_chat_id, fcm_token FROM branches WHERE id = ?", [branchId]);
     if (branch.length === 0) {
       return res.status(400).json({ error: `Филиал с id ${branchId} не найден` });
     }
 
+    // Отправка в Telegram
     const chatId = branch[0].telegram_chat_id;
-    if (!chatId) {
-      return res.status(500).json({ error: `Для филиала "${branch[0].name}" не настроен Telegram chat ID` });
+    if (chatId) {
+      await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        chat_id: chatId,
+        text: orderText,
+        parse_mode: "Markdown",
+      });
+    } else {
+      console.warn(`Для филиала "${branch[0].name}" не настроен Telegram chat ID`);
     }
 
-    await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      chat_id: chatId,
-      text: orderText,
-      parse_mode: "Markdown",
-    });
+    // Отправка push-уведомления через Firebase
+    const fcmToken = branch[0].fcm_token;
+    if (fcmToken) {
+      const message = {
+        notification: {
+          title: "Новый заказ!",
+          body: `Получен новый заказ на сумму ${finalTotal.toFixed(2)} сом в филиале ${branch[0].name}.`,
+        },
+        token: fcmToken,
+      };
+
+      try {
+        await admin.messaging().send(message);
+        console.log(`Push-уведомление отправлено для филиала "${branch[0].name}"`);
+      } catch (fcmError) {
+        console.error(`Ошибка отправки push-уведомления для филиала "${branch[0].name}":`, fcmError.message);
+      }
+    } else {
+      console.warn(`Для филиала "${branch[0].name}" не настроен FCM-токен`);
+    }
 
     res.status(200).json({ message: "Заказ отправлен", orderId: result.insertId });
   } catch (error) {
@@ -979,15 +1010,15 @@ app.delete("/promo-codes/:id", authenticateToken, async (req, res) => {
 });
 
 app.post("/branches", authenticateToken, async (req, res) => {
-  const { name, address, phone, telegram_chat_id } = req.body;
+  const { name, address, phone, telegram_chat_id, fcm_token } = req.body;
   if (!name) return res.status(400).json({ error: "Название филиала обязательно" });
 
   try {
     const [result] = await db.query(
-      "INSERT INTO branches (name, address, phone, telegram_chat_id) VALUES (?, ?, ?, ?)",
-      [name, address || null, phone || null, telegram_chat_id || null]
+      "INSERT INTO branches (name, address, phone, telegram_chat_id, fcm_token) VALUES (?, ?, ?, ?, ?)",
+      [name, address || null, phone || null, telegram_chat_id || null, fcm_token || null]
     );
-    res.status(201).json({ id: result.insertId, name, address, phone, telegram_chat_id });
+    res.status(201).json({ id: result.insertId, name, address, phone, telegram_chat_id, fcm_token });
   } catch (err) {
     res.status(500).json({ error: "Ошибка сервера" });
   }
@@ -995,15 +1026,15 @@ app.post("/branches", authenticateToken, async (req, res) => {
 
 app.put("/branches/:id", authenticateToken, async (req, res) => {
   const { id } = req.params;
-  const { name, address, phone, telegram_chat_id } = req.body;
+  const { name, address, phone, telegram_chat_id, fcm_token } = req.body;
   if (!name) return res.status(400).json({ error: "Название филиала обязательно" });
 
   try {
     await db.query(
-      "UPDATE branches SET name = ?, address = ?, phone = ?, telegram_chat_id = ? WHERE id = ?",
-      [name, address || null, phone || null, telegram_chat_id || null, id]
+      "UPDATE branches SET name = ?, address = ?, phone = ?, telegram_chat_id = ?, fcm_token = ? WHERE id = ?",
+      [name, address || null, phone || null, telegram_chat_id || null, fcm_token || null, id]
     );
-    res.json({ id, name, address, phone, telegram_chat_id });
+    res.json({ id, name, address, phone, telegram_chat_id, fcm_token });
   } catch (err) {
     res.status(500).json({ error: "Ошибка сервера" });
   }
