@@ -8,31 +8,13 @@ const path = require("path");
 const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
 const { Upload } = require("@aws-sdk/lib-storage");
 const axios = require("axios");
-const admin = require("firebase-admin");
-const fs = require("fs").promises;
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Секретный ключ для JWT
 const JWT_SECRET = "your_jwt_secret_key";
-
-// Инициализация Firebase Admin SDK
-const initializeFirebase = async () => {
-  const serviceAccountPath = "boodai-pizza-firebase-adminsdk.json";
-  try {
-    await fs.access(serviceAccountPath);
-    const serviceAccount = require(serviceAccountPath);
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-    });
-    console.log("Firebase Admin SDK успешно инициализирован");
-    return admin.firestore();
-  } catch (err) {
-    console.error("Ошибка при инициализации Firebase Admin SDK:", err.message);
-    throw new Error(`Не удалось загрузить файл ${serviceAccountPath}.`);
-  }
-};
 
 // Настройка S3Client для Timeweb Cloud
 const s3Client = new S3Client({
@@ -54,7 +36,7 @@ const testS3Connection = async () => {
     const command = new PutObjectCommand({
       Bucket: S3_BUCKET,
       Key: "test-connection.txt",
-      Body: "This is a test file to check S3 connection.",
+      Body: "Это тестовый файл для проверки подключения к S3.",
     });
     await s3Client.send(command);
     console.log("Успешно подключились к S3!");
@@ -180,19 +162,11 @@ app.get("/product-image/:key", optionalAuthenticateToken, async (req, res) => {
 
 // Инициализация сервера
 const initializeServer = async () => {
-  let firestore;
-  try {
-    firestore = await initializeFirebase();
-  } catch (err) {
-    console.error("Не удалось инициализировать Firebase:", err.message);
-    process.exit(1);
-  }
-
   try {
     const connection = await db.getConnection();
     console.log("Подключено к MySQL успешно!");
 
-    // Обновление структуры таблицы products для мультиязычности и новых полей
+    // Создание таблицы products
     await connection.query(`
       CREATE TABLE IF NOT EXISTS products (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -202,7 +176,7 @@ const initializeServer = async () => {
         price_medium DECIMAL(10,2),
         price_large DECIMAL(10,2),
         price_single DECIMAL(10,2),
-        size ENUM('small', 'medium', 'large', 'single') DEFAULT 'single',
+        size ENUM('small', ' Nike', 'large', 'single') DEFAULT 'single',
         is_spicy BOOLEAN DEFAULT FALSE,
         branch_id INT NOT NULL,
         category_id INT NOT NULL,
@@ -231,7 +205,7 @@ const initializeServer = async () => {
     `);
     console.log("Таблица sauces проверена/создана");
 
-    // Миграция существующих данных в формат JSON
+    // Миграция данных продуктов в JSON
     const [products] = await connection.query("SELECT id, name, description FROM products");
     for (const product of products) {
       try {
@@ -249,7 +223,7 @@ const initializeServer = async () => {
     }
     console.log("Данные продуктов мигрированы в формат JSON");
 
-    // Создание остальных таблиц
+    // Создание таблицы branches
     await connection.query(`
       CREATE TABLE IF NOT EXISTS branches (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -260,6 +234,9 @@ const initializeServer = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    console.log("Таблица branches проверена/создана");
+
+    // Создание таблицы categories
     await connection.query(`
       CREATE TABLE IF NOT EXISTS categories (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -267,6 +244,9 @@ const initializeServer = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    console.log("Таблица categories проверена/создана");
+
+    // Создание таблицы subcategories
     await connection.query(`
       CREATE TABLE IF NOT EXISTS subcategories (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -275,6 +255,9 @@ const initializeServer = async () => {
         FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
       )
     `);
+    console.log("Таблица subcategories проверена/создана");
+
+    // Создание таблицы promo_codes
     await connection.query(`
       CREATE TABLE IF NOT EXISTS promo_codes (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -285,6 +268,9 @@ const initializeServer = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    console.log("Таблица promo_codes проверена/создана");
+
+    // Создание таблицы orders
     await connection.query(`
       CREATE TABLE IF NOT EXISTS orders (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -300,6 +286,9 @@ const initializeServer = async () => {
         FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE
       )
     `);
+    console.log("Таблица orders проверена/создана");
+
+    // Создание таблицы stories
     await connection.query(`
       CREATE TABLE IF NOT EXISTS stories (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -307,6 +296,9 @@ const initializeServer = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    console.log("Таблица stories проверена/создана");
+
+    // Создание таблицы discounts
     await connection.query(`
       CREATE TABLE IF NOT EXISTS discounts (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -318,6 +310,9 @@ const initializeServer = async () => {
         FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
       )
     `);
+    console.log("Таблица discounts проверена/создана");
+
+    // Создание таблицы banners
     await connection.query(`
       CREATE TABLE IF NOT EXISTS banners (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -330,6 +325,9 @@ const initializeServer = async () => {
         FOREIGN KEY (promo_code_id) REFERENCES promo_codes(id) ON DELETE SET NULL
       )
     `);
+    console.log("Таблица banners проверена/создана");
+
+    // Создание таблицы users
     await connection.query(`
       CREATE TABLE IF NOT EXISTS users (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -339,12 +337,13 @@ const initializeServer = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    console.log("Таблица users проверена/создана");
 
     // Проверка и добавление администратора
     const [users] = await connection.query("SELECT * FROM users WHERE email = ?", ["admin@boodaypizza.com"]);
     if (users.length === 0) {
       const hashedPassword = await bcrypt.hash("admin123", 10);
-      await connection.query("INSERT INTO users (name, email, password) VALUES (?, ?, ?)", ["Admin", "admin@boodaypizza.com", hashedPassword]);
+      await connection.query("INSERT INTO users (name, email, password) VALUES (?, ?, ?)", ["Админ", "admin@boodaypizza.com", hashedPassword]);
       console.log("Админ создан: admin@boodaypizza.com / admin123");
     }
 
@@ -361,7 +360,7 @@ const initializeServer = async () => {
     connection.release();
     await testS3Connection();
 
-    app.listen(5000, () => console.log("Server running on port 5000"));
+    app.listen(5000, () => console.log("Сервер запущен на порту 5000"));
   } catch (err) {
     console.error("Ошибка инициализации сервера:", err.message);
     process.exit(1);
@@ -502,7 +501,7 @@ app.post("/api/public/validate-promo", async (req, res) => {
 });
 
 app.post("/api/public/send-order", async (req, res) => {
-  const { orderDetails, deliveryDetails, cartItems, discount, promoCode, branchId, userId, boodaiCoinsUsed } = req.body;
+  const { orderDetails, deliveryDetails, cartItems, discount, promoCode, branchId } = req.body;
 
   if (!cartItems || !Array.isArray(cartItems) || cartItems.length === 0) {
     return res.status(400).json({ error: "Корзина пуста" });
@@ -521,9 +520,7 @@ app.post("/api/public/send-order", async (req, res) => {
       return sum + itemPrice * item.quantity;
     }, 0);
     const discountedTotal = total * (1 - (discount || 0) / 100);
-    let finalTotal = discountedTotal;
-    let coinsUsed = Number(boodaiCoinsUsed) || 0;
-    let coinsEarned = total * 0.05;
+    const finalTotal = discountedTotal;
 
     const escapeMarkdown = (text) => (text ? text.replace(/([_*[\]()~`>#+-.!])/g, "\\$1") : "Нет");
     const orderText = `
@@ -536,7 +533,7 @@ app.post("/api/public/send-order", async (req, res) => {
 
 🛒 *Товары:*
 ${cartItems.map((item) => {
-  const itemName = typeof item.name === "object" ? item.name.ru || item.name.en || item.name.ky || "Unnamed Item" : item.name;
+  const itemName = typeof item.name === "object" ? item.name.ru || item.name.en || item.name.ky || "Без названия" : item.name;
   const itemPrice =
     item.size === "small" && item.price_small
       ? item.price_small
@@ -550,7 +547,6 @@ ${cartItems.map((item) => {
 
 💰 Итог: ${total.toFixed(2)} сом
 ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} сом` : "💸 Скидка не применена"}
-${coinsUsed > 0 ? `📉 Boodai Coins: ${coinsUsed.toFixed(2)}` : ""}
 💰 Итоговая сумма: ${finalTotal.toFixed(2)} сом
     `;
 
@@ -568,7 +564,8 @@ ${coinsUsed > 0 ? `📉 Boodai Coins: ${coinsUsed.toFixed(2)}` : ""}
       ]
     );
 
-    const [branch] = await db.query("SELECT name, telegram_chat_id FROM branches WHERE id = ?", [branchId]);
+    const [branch] = await db.query("SELECT name, telegram_chat_id FROM branches WHERE integrantes
+id = ?", [branchId]);
     if (branch.length === 0) {
       return res.status(400).json({ error: `Филиал с id ${branchId} не найден` });
     }
@@ -584,31 +581,7 @@ ${coinsUsed > 0 ? `📉 Boodai Coins: ${coinsUsed.toFixed(2)}` : ""}
       parse_mode: "Markdown",
     });
 
-    let newBalance = 0;
-    if (userId) {
-      const userRef = firestore.collection("users").doc(userId);
-      const userDoc = await userRef.get();
-      if (userDoc.exists) {
-        const userData = userDoc.data();
-        const currentCoins = Number(userData.boodaiCoins) || 0;
-        if (coinsUsed > currentCoins) {
-          return res.status(400).json({ error: `Недостаточно Boodai Coins: ${currentCoins.toFixed(2)}` });
-        }
-        newBalance = currentCoins - coinsUsed + coinsEarned;
-        finalTotal = Math.max(0, discountedTotal - coinsUsed);
-        await userRef.update({ boodaiCoins: newBalance });
-        await firestore.collection("transactions").add({
-          userId,
-          type: "order",
-          amount: coinsEarned,
-          coinsUsed,
-          orderTotal: total,
-          timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        });
-      }
-    }
-
-    res.status(200).json({ message: "Заказ отправлен", orderId: result.insertId, boodaiCoins: newBalance });
+    res.status(200).json({ message: "Заказ отправлен", orderId: result.insertId });
   } catch (error) {
     console.error("Ошибка при отправке заказа:", error.message);
     res.status(500).json({ error: "Ошибка сервера" });
@@ -616,7 +589,7 @@ ${coinsUsed > 0 ? `📉 Boodai Coins: ${coinsUsed.toFixed(2)}` : ""}
 });
 
 // Остальные маршруты
-app.get("/", (req, res) => res.send("Booday Pizza API"));
+app.get("/", (req, res) => res.send("API Booday Pizza"));
 
 app.post("/admin/login", async (req, res) => {
   const { email, password } = req.body;
@@ -648,7 +621,8 @@ app.get("/branches", authenticateToken, async (req, res) => {
 
 app.get("/products", authenticateToken, async (req, res) => {
   try {
-    const [products] = await db.query(`
+    const [products] = await db.query(
+      `
       SELECT p.*, b.name as branch_name, c.name as category_name, s.name as subcategory_name,
              d.discount_percent, d.expires_at, d.is_active as discount_active,
              (SELECT JSON_ARRAYAGG(JSON_OBJECT('id', s.id, 'name', s.name, 'image', s.image)) 
@@ -658,7 +632,8 @@ app.get("/products", authenticateToken, async (req, res) => {
       LEFT JOIN categories c ON p.category_id = c.id
       LEFT JOIN subcategories s ON p.sub_category_id = s.id
       LEFT JOIN discounts d ON p.id = d.product_id AND d.is_active = TRUE AND (d.expires_at IS NULL OR d.expires_at > NOW())
-    `);
+    `
+    );
     const parsedProducts = products.map((p) => ({
       ...p,
       name: p.name ? JSON.parse(p.name) : { ru: "", ky: "", en: "" },
@@ -674,12 +649,14 @@ app.get("/products", authenticateToken, async (req, res) => {
 
 app.get("/discounts", authenticateToken, async (req, res) => {
   try {
-    const [discounts] = await db.query(`
+    const [discounts] = await db.query(
+      `
       SELECT d.*, p.name as product_name 
       FROM discounts d
       JOIN products p ON d.product_id = p.id
       WHERE d.is_active = TRUE AND (d.expires_at IS NULL OR d.expires_at > NOW())
-    `);
+    `
+    );
     const parsedDiscounts = discounts.map((d) => ({
       ...d,
       product_name: d.product_name ? JSON.parse(d.product_name) : { ru: "", ky: "", en: "" },
@@ -705,11 +682,13 @@ app.get("/stories", authenticateToken, async (req, res) => {
 
 app.get("/banners", authenticateToken, async (req, res) => {
   try {
-    const [banners] = await db.query(`
+    const [banners] = await db.query(
+      `
       SELECT b.*, pc.code AS promo_code, pc.discount_percent
       FROM banners b
       LEFT JOIN promo_codes pc ON b.promo_code_id = pc.id
-    `);
+    `
+    );
     const bannersWithUrls = banners.map((banner) => ({
       ...banner,
       image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${banner.image.split("/").pop()}`,
@@ -727,12 +706,15 @@ app.get("/banners", authenticateToken, async (req, res) => {
 app.get("/banners/:id", async (req, res) => {
   const { id } = req.params;
   try {
-    const [banners] = await db.query(`
+    const [banners] = await db.query(
+      `
       SELECT b.*, pc.code AS promo_code, pc.discount_percent
       FROM banners b
       LEFT JOIN promo_codes pc ON b.promo_code_id = pc.id
       WHERE b.id = ?
-    `, [id]);
+    `,
+      [id]
+    );
     if (banners.length === 0) {
       return res.status(404).json({ error: "Баннер не найден" });
     }
@@ -777,12 +759,15 @@ app.post("/banners", authenticateToken, (req, res) => {
         [imageKey, title || null, description || null, button_text || null, promo_code_id || null]
       );
 
-      const [newBanner] = await db.query(`
+      const [newBanner] = await db.query(
+        `
         SELECT b.*, pc.code AS promo_code, pc.discount_percent
         FROM banners b
         LEFT JOIN promo_codes pc ON b.promo_code_id = pc.id
         WHERE b.id = ?
-      `, [result.insertId]);
+      `,
+        [result.insertId]
+      );
 
       const banner = newBanner[0];
       res.status(201).json({
@@ -834,12 +819,15 @@ app.put("/banners/:id", authenticateToken, (req, res) => {
         [imageKey, title || null, description || null, button_text || null, promo_code_id || null, id]
       );
 
-      const [updatedBanner] = await db.query(`
+      const [updatedBanner] = await db.query(
+        `
         SELECT b.*, pc.code AS promo_code, pc.discount_percent
         FROM banners b
         LEFT JOIN promo_codes pc ON b.promo_code_id = pc.id
         WHERE b.id = ?
-      `, [id]);
+      `,
+        [id]
+      );
 
       const banner = updatedBanner[0];
       res.json({
@@ -880,12 +868,14 @@ app.delete("/banners/:id", authenticateToken, async (req, res) => {
 
 app.get("/categories", authenticateToken, async (req, res) => {
   try {
-    const [categories] = await db.query(`
+    const [categories] = await db.query(
+      `
       SELECT c.*, 
              (SELECT JSON_ARRAYAGG(JSON_OBJECT('id', s.id, 'name', s.name))
               FROM subcategories s WHERE s.category_id = c.id) AS sub_categories
       FROM categories c
-    `);
+    `
+    );
     const parsedCategories = categories.map((c) => ({
       ...c,
       sub_categories: c.sub_categories ? JSON.parse(c.sub_categories) : [],
@@ -1067,11 +1057,13 @@ app.delete("/categories/:id", authenticateToken, async (req, res) => {
 
 app.get("/subcategories", authenticateToken, async (req, res) => {
   try {
-    const [subcategories] = await db.query(`
+    const [subcategories] = await db.query(
+      `
       SELECT s.*, c.name as category_name 
       FROM subcategories s
       JOIN categories c ON s.category_id = c.id
-    `);
+    `
+    );
     res.json(subcategories);
   } catch (err) {
     res.status(500).json({ error: "Ошибка сервера" });
@@ -1161,9 +1153,11 @@ app.post("/products", authenticateToken, (req, res) => {
       const isSpicyBool = isSpicy === "true" || isSpicy === true;
 
       const [result] = await db.query(
-        `INSERT INTO products (
+        `
+        INSERT INTO products (
           name, description, price_${size}, size, is_spicy, branch_id, category_id, sub_category_id, image
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
         [
           JSON.stringify(nameJson),
           JSON.stringify(descriptionJson),
@@ -1181,22 +1175,21 @@ app.post("/products", authenticateToken, (req, res) => {
       for (let i = 0; i < saucesJson.length; i++) {
         const sauce = saucesJson[i];
         if (sauce.name) {
-          await db.query(
-            "INSERT INTO sauces (product_id, name, image) VALUES (?, ?, ?)",
-            [productId, sauce.name, sauceImages[i] || null]
-          );
+          await db.query("INSERT INTO sauces (product_id, name, image) VALUES (?, ?, ?)", [productId, sauce.name, sauceImages[i] || null]);
         }
       }
 
       const [newProduct] = await db.query(
-        `SELECT p.*, b.name as branch_name, c.name as category_name, s.name as subcategory_name,
-                (SELECT JSON_ARRAYAGG(JSON_OBJECT('id', s.id, 'name', s.name, 'image', s.image)) 
-                 FROM sauces s WHERE s.product_id = p.id) AS sauces
-         FROM products p
-         LEFT JOIN branches b ON p.branch_id = b.id
-         LEFT JOIN categories c ON p.category_id = c.id
-         LEFT JOIN subcategories s ON p.sub_category_id = s.id
-         WHERE p.id = ?`,
+        `
+        SELECT p.*, b.name as branch_name, c.name as category_name, s.name as subcategory_name,
+               (SELECT JSON_ARRAYAGG(JSON_OBJECT('id', s.id, 'name', s.name, 'image', s.image)) 
+                FROM sauces s WHERE s.product_id = p.id) AS sauces
+        FROM products p
+        LEFT JOIN branches b ON p.branch_id = b.id
+        LEFT JOIN categories c ON p.category_id = c.id
+        LEFT JOIN subcategories s ON p.sub_category_id = s.id
+        WHERE p.id = ?
+      `,
         [productId]
       );
 
@@ -1254,10 +1247,12 @@ app.put("/products/:id", authenticateToken, (req, res) => {
       const isSpicyBool = isSpicy === "true" || isSpicy === true;
 
       await db.query(
-        `UPDATE products SET 
+        `
+        UPDATE products SET 
           name = ?, description = ?, price_${size} = ?, size = ?, is_spicy = ?, 
           branch_id = ?, category_id = ?, sub_category_id = ?, image = ? 
-        WHERE id = ?`,
+        WHERE id = ?
+      `,
         [
           JSON.stringify(nameJson),
           JSON.stringify(descriptionJson),
@@ -1272,27 +1267,25 @@ app.put("/products/:id", authenticateToken, (req, res) => {
         ]
       );
 
-      // Обновление соусов
       await db.query("DELETE FROM sauces WHERE product_id = ?", [id]);
       for (let i = 0; i < saucesJson.length; i++) {
         const sauce = saucesJson[i];
         if (sauce.name) {
-          await db.query(
-            "INSERT INTO sauces (product_id, name, image) VALUES (?, ?, ?)",
-            [id, sauce.name, sauceImages[i] || null]
-          );
+          await db.query("INSERT INTO sauces (product_id, name, image) VALUES (?, ?, ?)", [id, sauce.name, sauceImages[i] || null]);
         }
       }
 
       const [updatedProduct] = await db.query(
-        `SELECT p.*, b.name as branch_name, c.name as category_name, s.name as subcategory_name,
-                (SELECT JSON_ARRAYAGG(JSON_OBJECT('id', s.id, 'name', s.name, 'image', s.image)) 
-                 FROM sauces s WHERE s.product_id = p.id) AS sauces
-         FROM products p
-         LEFT JOIN branches b ON p.branch_id = b.id
-         LEFT JOIN categories c ON p.category_id = c.id
-         LEFT JOIN subcategories s ON p.sub_category_id = s.id
-         WHERE p.id = ?`,
+        `
+        SELECT p.*, b.name as branch_name, c.name as category_name, s.name as subcategory_name,
+               (SELECT JSON_ARRAYAGG(JSON_OBJECT('id', s.id, 'name', s.name, 'image', s.image)) 
+                FROM sauces s WHERE s.product_id = p.id) AS sauces
+        FROM products p
+        LEFT JOIN branches b ON p.branch_id = b.id
+        LEFT JOIN categories c ON p.category_id = c.id
+        LEFT JOIN subcategories s ON p.sub_category_id = s.id
+        WHERE p.id = ?
+      `,
         [id]
       );
 
@@ -1341,10 +1334,13 @@ app.post("/discounts", authenticateToken, async (req, res) => {
     const [product] = await db.query("SELECT id FROM products WHERE id = ?", [productId]);
     if (product.length === 0) return res.status(404).json({ error: "Продукт не найден" });
 
-    const [existingDiscount] = await db.query(`
+    const [existingDiscount] = await db.query(
+      `
       SELECT id FROM discounts 
       WHERE product_id = ? AND is_active = TRUE AND (expires_at IS NULL OR expires_at > NOW())
-    `, [productId]);
+    `,
+      [productId]
+    );
     if (existingDiscount.length > 0) {
       return res.status(400).json({ error: "Для этого продукта уже существует активная скидка" });
     }
@@ -1354,12 +1350,15 @@ app.post("/discounts", authenticateToken, async (req, res) => {
       [productId, discountPercent, expiresAt || null, isActive !== undefined ? isActive : true]
     );
 
-    const [newDiscount] = await db.query(`
+    const [newDiscount] = await db.query(
+      `
       SELECT d.*, p.name as product_name 
       FROM discounts d
       JOIN products p ON d.product_id = p.id
       WHERE d.id = ?
-    `, [result.insertId]);
+    `,
+      [result.insertId]
+    );
 
     res.status(201).json({
       ...newDiscount[0],
@@ -1384,10 +1383,13 @@ app.put("/discounts/:id", authenticateToken, async (req, res) => {
     if (product.length === 0) return res.status(404).json({ error: "Продукт не найден" });
 
     if (discount[0].product_id !== productId) {
-      const [existingDiscount] = await db.query(`
+      const [existingDiscount] = await db.query(
+        `
         SELECT id FROM discounts 
         WHERE product_id = ? AND id != ? AND is_active = TRUE AND (expires_at IS NULL OR expires_at > NOW())
-      `, [productId, id]);
+      `,
+        [productId, id]
+      );
       if (existingDiscount.length > 0) {
         return res.status(400).json({ error: "Для этого продукта уже существует другая активная скидка" });
       }
@@ -1398,12 +1400,15 @@ app.put("/discounts/:id", authenticateToken, async (req, res) => {
       [productId, discountPercent, expiresAt || null, isActive !== undefined ? isActive : true, id]
     );
 
-    const [updatedDiscount] = await db.query(`
+    const [updatedDiscount] = await db.query(
+      `
       SELECT d.*, p.name as product_name 
       FROM discounts d
       JOIN products p ON d.product_id = p.id
       WHERE d.id = ?
-    `, [id]);
+    `,
+      [id]
+    );
 
     res.json({
       ...updatedDiscount[0],
@@ -1417,12 +1422,15 @@ app.put("/discounts/:id", authenticateToken, async (req, res) => {
 app.delete("/discounts/:id", authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
-    const [discount] = await db.query(`
+    const [discount] = await db.query(
+      `
       SELECT d.*, p.name as product_name 
       FROM discounts d
       JOIN products p ON d.product_id = p.id
       WHERE d.id = ?
-    `, [id]);
+    `,
+      [id]
+    );
     if (discount.length === 0) return res.status(404).json({ error: "Скидка не найдена" });
 
     await db.query("DELETE FROM discounts WHERE id = ?", [id]);
