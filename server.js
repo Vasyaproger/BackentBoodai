@@ -1628,6 +1628,74 @@ app.put("/stories/:id", authenticateToken, restrictToAdmin, (req, res) => {
   });
 });
 
+app.put("/profile", authenticateToken, async (req, res) => {
+  const { name, email, password } = req.body;
+  if (!name && !email && !password) {
+    return res.status(400).json({ error: "Укажите хотя бы одно поле для обновления" });
+  }
+
+  try {
+    const updates = {};
+    if (name) updates.name = name;
+    if (email) updates.email = email;
+    if (password) updates.password = await bcrypt.hash(password, 10);
+
+    if (email) {
+      const [existingUsers] = await db.query("SELECT id FROM users WHERE email = ? AND id != ?", [email, req.user.id]);
+      if (existingUsers.length > 0) {
+        return res.status(400).json({ error: "Email уже используется" });
+      }
+    }
+
+    const fields = Object.keys(updates).map((key) => `${key} = ?`).join(", ");
+    const values = Object.values(updates).concat(req.user.id);
+
+    if (fields) {
+      await db.query(`UPDATE users SET ${fields} WHERE id = ?`, values);
+    }
+
+    const [updatedUser] = await db.query("SELECT id, name, email, role FROM users WHERE id = ?", [req.user.id]);
+    res.json(updatedUser[0]);
+  } catch (err) {
+    console.error("Ошибка обновления профиля:", err.message);
+    res.status(500).json({ error: "Ошибка сервера" });
+  }
+});
+
+app.post("/login", async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: "Введите email и пароль" });
+  }
+
+  try {
+    const [users] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
+    if (users.length === 0) {
+      return res.status(401).json({ error: "Неверный email или пароль" });
+    }
+
+    const user = users[0];
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({ error: "Неверный email или пароль" });
+    }
+
+    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: "1h" });
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (err) {
+    console.error("Ошибка входа пользователя:", err.message);
+    res.status(500).json({ error: "Ошибка сервера" });
+  }
+});
+
 app.delete("/stories/:id", authenticateToken, restrictToAdmin, async (req, res) => {
   const { id } = req.params;
   try {
