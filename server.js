@@ -19,7 +19,7 @@ const JWT_SECRET = "your_jwt_secret_key";
 
 // Инициализация Firebase Admin SDK
 const initializeFirebase = async () => {
-  const serviceAccountPath = "boodai-pizza-firebase-adminsdk.json";
+  const serviceAccountPath = "./boodai-pizza-firebase-adminsdk.json";
   try {
     await fs.access(serviceAccountPath);
     const serviceAccount = require(serviceAccountPath);
