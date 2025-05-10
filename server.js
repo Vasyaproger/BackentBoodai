@@ -209,7 +209,7 @@ const initializeServer = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
         FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
-        FOREIGN KEY (sub_category_id) REFERENCES subcategories(id) ON DELETE SET NULL
+        FOREIGN KEY (sub_category_id) REFERENCES subcategories(id) ON DELETE Modular Programming in JavaScriptSET NULL
       )
     `);
     console.log("Таблица products проверена/создана");
@@ -374,7 +374,7 @@ const initializeServer = async () => {
       console.log("Админ успешно создан: admin@boodaypizza.com / admin123");
     }
 
-    // Добавление фили4алов
+    // Добавление филиалов
     const [branches] = await connection.query("SELECT * FROM branches");
     if (branches.length === 0) {
       await connection.query("INSERT INTO branches (name, telegram_chat_id) VALUES (?, ?)", ["BOODAI PIZZA", "-1002311447135"]);
@@ -401,6 +401,25 @@ app.get("/api/public/branches", async (req, res) => {
     res.json(branches);
   } catch (err) {
     console.error("Ошибка получения филиалов:", err.message);
+    res.status(500).json({ error: "Ошибка сервера" });
+  }
+});
+
+app.get("/api/public/categories", async (req, res) => {
+  try {
+    const [categories] = await db.query(`
+      SELECT c.*, 
+             (SELECT JSON_ARRAYAGG(JSON_OBJECT('id', s.id, 'name', s.name))
+              FROM subcategories s WHERE s.category_id = c.id) AS sub_categories
+      FROM categories c
+    `);
+    const parsedCategories = categories.map((c) => ({
+      ...c,
+      sub_categories: c.sub_categories ? JSON.parse(c.sub_categories) : [],
+    }));
+    res.json(parsedCategories);
+  } catch (err) {
+    console.error("Ошибка получения категорий:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -664,7 +683,7 @@ app.post("/admin/login", async (req, res) => {
         name: user.name, 
         email: user.email, 
         role: user.role,
-        authToken: token // Добавляем токен в ответ
+        authToken: token 
       } 
     });
   } catch (err) {
@@ -954,6 +973,58 @@ app.get("/categories", authenticateToken, restrictToAdmin, async (req, res) => {
   }
 });
 
+app.post("/categories", authenticateToken, restrictToAdmin, async (req, res) => {
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: "Название категории обязательно" });
+
+  try {
+    const [result] = await db.query("INSERT INTO categories (name) VALUES (?)", [name]);
+    res.status(201).json({ id: result.insertId, name });
+  } catch (err) {
+    console.error("Ошибка добавления категории:", err.message);
+    res.status(500).json({ error: "Ошибка сервера" });
+  }
+});
+
+app.put("/categories/:id", authenticateToken, restrictToAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: "Название категории обязательно" });
+
+  try {
+    const [existing] = await db.query("SELECT id FROM categories WHERE id = ?", [id]);
+    if (existing.length === 0) return res.status(404).json({ error: "Категория не найдена" });
+
+    await db.query("UPDATE categories SET name = ? WHERE id = ?", [name, id]);
+    res.json({ id, name });
+  } catch (err) {
+    console.error("Ошибка обновления категории:", err.message);
+    res.status(500).json({ error: "Ошибка сервера" });
+  }
+});
+
+app.delete("/categories/:id", authenticateToken, restrictToAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [existing] = await db.query("SELECT id, name FROM categories WHERE id = ?", [id]);
+    if (existing.length === 0) return res.status(404).json({ error: "Категория не найдена" });
+
+    const [products] = await db.query("SELECT id FROM products WHERE category_id = ?", [id]);
+    if (products.length > 0) {
+      console.log(`Удаление категории ${existing[0].name} приведет к удалению ${products.length} продуктов из-за CASCADE`);
+    }
+
+    await db.query("DELETE FROM categories WHERE id = ?", [id]);
+    res.json({ message: `Категория "${existing[0].name}" успешно удалена` });
+  } catch (err) {
+    console.error("Ошибка удаления категории:", err.message);
+    if (err.code === "ER_ROW_IS_REFERENCED_2") {
+      return res.status(400).json({ error: "Невозможно удалить категорию, так как она используется в продуктах" });
+    }
+    res.status(500).json({ error: "Ошибка сервера при удалении категории" });
+  }
+});
+
 app.get("/promo-codes", authenticateToken, restrictToAdmin, async (req, res) => {
   try {
     const [promoCodes] = await db.query("SELECT * FROM promo_codes");
@@ -1092,44 +1163,6 @@ app.delete("/branches/:id", authenticateToken, restrictToAdmin, async (req, res)
     res.json({ message: "Филиал успешно удален" });
   } catch (err) {
     console.error("Ошибка удаления филиала:", err.message);
-    res.status(500).json({ error: "Ошибка сервера" });
-  }
-});
-
-app.post("/categories", authenticateToken, restrictToAdmin, async (req, res) => {
-  const { name } = req.body;
-  if (!name) return res.status(400).json({ error: "Название категории обязательно" });
-
-  try {
-    const [result] = await db.query("INSERT INTO categories (name) VALUES (?)", [name]);
-    res.status(201).json({ id: result.insertId, name });
-  } catch (err) {
-    console.error("Ошибка добавления категории:", err.message);
-    res.status(500).json({ error: "Ошибка сервера" });
-  }
-});
-
-app.put("/categories/:id", authenticateToken, restrictToAdmin, async (req, res) => {
-  const { id } = req.params;
-  const { name } = req.body;
-  if (!name) return res.status(400).json({ error: "Название категории обязательно" });
-
-  try {
-    await db.query("UPDATE categories SET name = ? WHERE id = ?", [name, id]);
-    res.json({ id, name });
-  } catch (err) {
-    console.error("Ошибка обновления категории:", err.message);
-    res.status(500).json({ error: "Ошибка сервера" });
-  }
-});
-
-app.delete("/categories/:id", authenticateToken, restrictToAdmin, async (req, res) => {
-  const { id } = req.params;
-  try {
-    await db.query("DELETE FROM categories WHERE id = ?", [id]);
-    res.json({ message: "Категория успешно удалена" });
-  } catch (err) {
-    console.error("Ошибка удаления категории:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
@@ -1299,7 +1332,7 @@ app.put("/products/:id", authenticateToken, restrictToAdmin, (req, res) => {
     const { id } = req.params;
     const { name, description, price, size, isSpicy, branchId, categoryId, subCategoryId, sauces } = req.body;
 
-try {
+    try {
       const [existing] = await db.query("SELECT image FROM products WHERE id = ?", [id]);
       if (existing.length === 0) {
         return res.status(404).json({ error: "Продукт не найден" });
@@ -1589,7 +1622,7 @@ app.put("/stories/:id", authenticateToken, restrictToAdmin, (req, res) => {
         image: `https://vasyaproger-backentboodai-543a.twc1.net/product-image/${imageKey.split("/").pop()}`,
       });
     } catch (err) {
-      console.error("Ошибка 更新 истории:", err.message);
+      console.error("Ошибка обновления истории:", err.message);
       res.status(500).json({ error: "Ошибка сервера" });
     }
   });
@@ -1630,66 +1663,17 @@ app.post("/register", async (req, res) => {
       "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)",
       [name, email, hashedPassword, "user"]
     );
-    const token = jwt.sign({ id: result.insertId, email, role: "user" }, JWT_SECRET, { expiresIn: "1h" });
-    res.status(201).json({ 
-      token, 
-      user: { 
-        id: result.insertId, 
-        name, 
-        email, 
-        role: "user",
-        authToken: token // Добавляем токен в ответ
-      } 
+
+    const userId = result.insertId;
+    const token = jwt.sign({ id: userId, email, role: "user" }, JWT_SECRET, { expiresIn: "1h" });
+
+    res.status(201).json({
+      message: "Пользователь успешно зарегистрирован",
+      user: { id: userId, name, email, role: "user" },
+      token,
     });
   } catch (err) {
-    console.error("Ошибка регистрации:", err.message);
+    console.error("Ошибка регистрации пользователя:", err.message);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
-
-app.post("/login", async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: "Введите email и пароль" });
-  }
-
-  try {
-    const [users] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
-    if (users.length === 0) {
-      return res.status(401).json({ error: "Неверный email или пароль" });
-    }
-
-    const user = users[0];
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ error: "Неверный email или пароль" });
-    }
-
-    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: "1h" });
-    res.json({ 
-      token, 
-      user: { 
-        id: user.id, 
-        name: user.name, 
-        email: user.email, 
-        role: user.role,
-        authToken: token // Добавляем токен в ответ
-      } 
-    });
-  } catch (err) {
-    console.error("Ошибка входа:", err.message);
-    res.status(500).json({ error: "Ошибка сервера" });
-  }
-});
-
-app.get("/users", authenticateToken, restrictToAdmin, async (req, res) => {
-  try {
-    const [users] = await db.query("SELECT id, name, email, role FROM users");
-    res.json(users);
-  } catch (err) {
-    console.error("Ошибка получения пользователей:", err.message);
-    res.status(500).json({ error: "Ошибка сервера" });
-  }
-});
-
-initializeServer();
