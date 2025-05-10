@@ -415,12 +415,17 @@ app.get("/api/public/categories", async (req, res) => {
     `);
     const parsedCategories = categories.map((c) => ({
       ...c,
-      sub_categories: c.sub_categories ? JSON.parse(c.sub_categories) : [],
+      // Проверяем, является ли sub_categories строкой, и парсим только в этом случае
+      sub_categories: c.sub_categories
+        ? typeof c.sub_categories === "string"
+          ? JSON.parse(c.sub_categories)
+          : c.sub_categories
+        : [],
     }));
     res.json(parsedCategories);
   } catch (err) {
     console.error("Ошибка получения категорий:", err.message);
-    res.status(500).json({ error: "Ошибка сервера" });
+    res.status(500).json({ error: "Ошибка сервера при получении категорий" });
   }
 });
 
