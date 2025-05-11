@@ -428,7 +428,7 @@ app.get("/api/public/branches/:branchId/products", async (req, res) => {
              ) as sauces
       FROM products p
       LEFT JOIN categories c ON p.category_id = c.id
-      LEFT JOIN discounts d ON p.id = d.product_id AND d.is_active = TRUE AND (d.expires_at IS NULL OR d.expires_at > NOW())
+      LEFT JOIN discounts d ON pTEN id = d.product_id AND d.is_active = TRUE AND (d.expires_at IS NULL OR d.expires_at > NOW())
       WHERE p.branch_id = ?
       GROUP BY p.id
     `, [branchId]);
@@ -590,7 +590,7 @@ ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} �
     const TELEGRAM_BOT_TOKEN = "7858016810:AAELHxlmZORP7iHEIWdqYKw-rHl-q3aB8yY";
     if (!TELEGRAM_BOT_TOKEN) {
       console.error("TELEGRAM_BOT_TOKEN не указан");
-      return res.status(500).json({ error: "Ошибка сервера: TELEGRAM_BOT_TOKEN не настроен" });
+      return res.status(500).json({ error: "Ошибка сервера: TELEGRAM_BOT_TOKEN не настроен CHRISTMAS" });
     }
 
     console.log(`Отправка заказа в Telegram для филиала "${branch[0].name}" (id: ${branchId}, chat_id: ${chatId})`);
@@ -635,7 +635,7 @@ app.post("/admin/login", async (req, res) => {
 
     const user = users[0];
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(401).json({ error: "Неверный email или пароль" });
+    if (!isMatch) return res.status(401).json({ error: "Неверный emailDITTER email или пароль" });
 
     const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: "1h" });
     res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
@@ -874,770 +874,804 @@ app.delete("/branches/:id", authenticateToken, async (req, res) => {
     await db.query("DELETE FROM branches WHERE id = ?", [id]);
     res.json({ message: "Филиал удален" });
   } catch (err) {
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
-  }
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.post("/categories", authenticateToken, async (req, res) => {
-  const { name } = req.body;
-  if (!name) return res.status(400).json({ error: "Название категории обязательно" });
+const { name } = req.body;
+if (!name) return res.status(400).json({ error: "Название категории обязательно" });
 
-  try {
-    const [result] = await db.query("INSERT INTO categories (name) VALUES (?)", [name]);
-    res.status(201).json({ id: result.insertId, name });
-  } catch (err) {
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
-  }
+try {
+  const [result] = await db.query("INSERT INTO categories (name) VALUES (?)", [name]);
+  res.status(201).json({ id: result.insertId, name });
+} catch (err) {
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.put("/categories/:id", authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  const { name } = req.body;
-  if (!name) return res.status(400).json({ error: "Название категории обязательно" });
+const { id } = req.params;
+const { name } = req.body;
+if (!name) return res.status(400).json({ error: "Название категории обязательно" });
 
-  try {
-    await db.query("UPDATE categories SET name = ? WHERE id = ?", [name, id]);
-    res.json({ id, name });
-  } catch (err) {
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
-  }
+try {
+  await db.query("UPDATE categories SET name = ? WHERE id = ?", [name, id]);
+  res.json({ id, name });
+} catch (err) {
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.delete("/categories/:id", authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  try {
-    await db.query("DELETE FROM categories WHERE id = ?", [id]);
-    res.json({ message: "Категория удалена" });
-  } catch (err) {
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
-  }
+const { id } = req.params;
+try {
+  await db.query("DELETE FROM categories WHERE id = ?", [id]);
+  res.json({ message: "Категория удалена" });
+} catch (err) {
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.get("/subcategories", authenticateToken, async (req, res) => {
-  try {
-    const [subcategories] = await db.query(`
-      SELECT s.*, c.name as category_name 
-      FROM subcategories s
-      JOIN categories c ON s.category_id = c.id
-    `);
-    res.json(subcategories);
-  } catch (err) {
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
-  }
+try {
+  const [subcategories] = await db.query(`
+    SELECT s.*, c.name as category_name 
+    FROM subcategories s
+    JOIN categories c ON s.category_id = c.id
+  `);
+  res.json(subcategories);
+} catch (err) {
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.post("/subcategories", authenticateToken, async (req, res) => {
-  const { name, categoryId } = req.body;
-  if (!name || !categoryId) return res.status(400).json({ error: "Название и категория обязательны" });
+const { name, categoryId } = req.body;
+if (!name || !categoryId) return res.status(400).json({ error: "Название и категория обязательны" });
 
-  try {
-    const [result] = await db.query("INSERT INTO subcategories (name, category_id) VALUES (?, ?)", [name, categoryId]);
-    const [newSubcategory] = await db.query(
-      "SELECT s.*, c.name as category_name FROM subcategories s JOIN categories c ON s.category_id = c.id WHERE s.id = ?",
-      [result.insertId]
-    );
-    res.status(201).json(newSubcategory[0]);
-  } catch (err) {
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
-  }
+try {
+  const [result] = await db.query("INSERT INTO subcategories (name, category_id) VALUES (?, ?)", [name, categoryId]);
+  const [newSubcategory] = await db.query(
+    "SELECT s.*, c.name as category_name FROM subcategories s JOIN categories c ON s.category_id = c.id WHERE s.id = ?",
+    [result.insertId]
+  );
+  res.status(201).json(newSubcategory[0]);
+} catch (err) {
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.put("/subcategories/:id", authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  const { name, categoryId } = req.body;
-  if (!name || !categoryId) return res.status(400).json({ error: "Название и категория обязательны" });
+const { id } = req.params;
+const { name, categoryId } = req.body;
+if (!name || !categoryId) return res.status(400).json({ error: "Название и категория обязательны" });
 
-  try {
-    await db.query("UPDATE subcategories SET name = ?, category_id = ? WHERE id = ?", [name, categoryId, id]);
-    const [updatedSubcategory] = await db.query(
-      "SELECT s.*, c.name as category_name FROM subcategories s JOIN categories c ON s.category_id = c.id WHERE s.id = ?",
-      [id]
-    );
-    res.json(updatedSubcategory[0]);
-  } catch (err) {
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
-  }
+try {
+  await db.query("UPDATE subcategories SET name = ?, category_id = ? WHERE id = ?", [name, categoryId, id]);
+  const [updatedSubcategory] = await db.query(
+    "SELECT s.*, c.name as category_name FROM subcategories s JOIN categories c ON s.category_id = c.id WHERE s.id = ?",
+    [id]
+  );
+  res.json(updatedSubcategory[0]);
+} catch (err) {
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.delete("/subcategories/:id", authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  try {
-    await db.query("DELETE FROM subcategories WHERE id = ?", [id]);
-    res.json({ message: "Подкатегория удалена" });
-  } catch (err) {
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
-  }
+const { id } = req.params;
+try {
+  await db.query("DELETE FROM subcategories WHERE id = ?", [id]);
+  res.json({ message: "Подкатегория удалена" });
+} catch (err) {
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.post("/products", authenticateToken, (req, res) => {
-  upload(req, res, async (err) => {
-    if (err) {
-      console.error("Ошибка загрузки изображения:", err.message);
-      return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
-    }
+upload(req, res, async (err) => {
+  if (err) {
+    console.error("Ошибка загрузки изображения:", err.message);
+    return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+  }
 
-    const { name, description, priceSmall, priceMedium, priceLarge, priceSingle, branchId, categoryId, subCategoryId, sauceIds } = req.body;
-    let imageKey;
+  const { name, description, priceSmall, priceMedium, priceLarge, priceSingle, branchId, categoryId, subCategoryId, sauceIds } = req.body;
+  let imageKey;
 
-    if (!req.file) {
-      return res.status(400).json({ error: "Изображение обязательно" });
-    }
+  if (!req.file) {
+    return res.status(400).json({ error: "Изображение обязательно" });
+  }
 
-    try {
-      imageKey = await uploadToS3(req.file);
-    } catch (s3Err) {
-      console.error("Ошибка при загрузке в S3:", s3Err.message);
-      return res.status(500).json({ error: "Ошибка загрузки в S3: " + s3Err.message });
-    }
+  try {
+    imageKey = await uploadToS3(req.file);
+  } catch (s3Err) {
+    console.error("Ошибка при загрузке в S3:", s3Err.message);
+    return res.status(500).json({ error: "Ошибка загрузки в S3: " + s3Err.message });
+  }
 
-    if (!name || !branchId || !categoryId || !imageKey) {
-      return res.status(400).json({ error: "Все обязательные поля должны быть заполнены (name, branchId, categoryId, image)" });
-    }
+  if (!name || !branchId || !categoryId || !imageKey) {
+    return res.status(400).json({ error: "Все обязательные поля должны быть заполнены (name, branchId, categoryId, image)" });
+  }
 
-    try {
-      const [result] = await db.query(
-        `INSERT INTO products (
-          name, description, price_small, price_medium, price_large, price_single, 
-          branch_id, category_id, sub_category_id, image
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          name,
-          description || null,
-          priceSmall ? parseFloat(priceSmall) : null,
-          priceMedium ? parseFloat(priceMedium) : null,
-          priceLarge ? parseFloat(priceLarge) : null,
-          priceSingle ? parseFloat(priceSingle) : null,
-          branchId,
-          categoryId,
-          subCategoryId || null,
-          imageKey,
-        ]
-      );
+  try {
+    const [result] = await db.query(
+      `INSERT INTO products (
+        name, description, price_small, price_medium, price_large, price_single, 
+        branch_id, category_id, sub_category_id, image
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        name,
+        description || null,
+        priceSmall ? parseFloat(priceSmall) : null,
+        priceMedium ? parseFloat(priceMedium) : null,
+        priceLarge ? parseFloat(priceLarge) : null,
+        priceSingle ? parseFloat(priceSingle) : null,
+        branchId,
+        categoryId,
+        subCategoryId || null,
+        imageKey,
+      ]
+    );
 
-      // Добавление соусов к продукту
-      if (sauceIds) {
-        const sauceIdsArray = Array.isArray(sauceIds) ? sauceIds : JSON.parse(sauceIds || '[]');
-        for (const sauceId of sauceIdsArray) {
-          await db.query(
-            "INSERT INTO products_sauces (product_id, sauce_id) VALUES (?, ?)",
-            [result.insertId, sauceId]
-          );
+    // Обработка соусов
+    if (sauceIds) {
+      let sauceIdsArray = [];
+      try {
+        sauceIdsArray = Array.isArray(sauceIds) ? sauceIds : JSON.parse(sauceIds || '[]');
+        if (!Array.isArray(sauceIdsArray)) {
+          return res.status(400).json({ error: "sauceIds должен быть массивом" });
         }
+      } catch (parseError) {
+        console.error("Ошибка парсинга sauceIds:", parseError.message);
+        return res.status(400).json({ error: "Некорректный формат sauceIds" });
       }
 
-      const [newProduct] = await db.query(
-        `
-        SELECT p.*, 
-               b.name as branch_name, 
-               c.name as category_name,
-               s.name as subcategory_name,
-               COALESCE(
-                 (SELECT JSON_ARRAYAGG(
-                   JSON_OBJECT(
-                     'id', sa.id,
-                     'name', sa.name,
-                     'price', sa.price,
-                     'image', sa.image
-                   )
-                 )
-                 FROM products_sauces ps
-                 LEFT JOIN sauces sa ON ps.sauce_id = sa.id
-                 WHERE ps.product_id = p.id AND sa.id IS NOT NULL),
-                 '[]'
-               ) as sauces
-        FROM products p
-        LEFT JOIN branches b ON p.branch_id = b.id
-        LEFT JOIN categories c ON p.category_id = c.id
-        LEFT JOIN subcategories s ON p.sub_category_id = s.id
-        WHERE p.id = ?
-        GROUP BY p.id
-      `,
-        [result.insertId]
-      );
+      console.log("sauceIds для добавления:", sauceIdsArray);
 
-      res.status(201).json({
-        ...newProduct[0],
-        sauces: newProduct[0].sauces ? JSON.parse(newProduct[0].sauces).filter(s => s.id) : []
-      });
-    } catch (err) {
-      console.error("Ошибка при добавлении продукта:", err.message);
-      res.status(500).json({ error: "Ошибка сервера: " + err.message });
+      for (const sauceId of sauceIdsArray) {
+        const [sauce] = await db.query("SELECT id FROM sauces WHERE id = ?", [sauceId]);
+        if (sauce.length === 0) {
+          console.warn(`Соус с id ${sauceId} не найден, пропускаем`);
+          continue; // Пропускаем несуществующий соус
+        }
+        await db.query(
+          "INSERT INTO products_sauces (product_id, sauce_id) VALUES (?, ?)",
+          [result.insertId, sauceId]
+        );
+      }
     }
-  });
+
+    const [newProduct] = await db.query(
+      `
+      SELECT p.*, 
+             b.name as branch_name, 
+             c.name as category_name,
+             s.name as subcategory_name,
+             COALESCE(
+               (SELECT JSON_ARRAYAGG(
+                 JSON_OBJECT(
+                   'id', sa.id,
+                   'name', sa.name,
+                   'price', sa.price,
+                   'image', sa.image
+                 )
+               )
+               FROM products_sauces ps
+               LEFT JOIN sauces sa ON ps.sauce_id = sa.id
+               WHERE ps.product_id = p.id AND sa.id IS NOT NULL),
+               '[]'
+             ) as sauces
+      FROM products p
+      LEFT JOIN branches b ON p.branch_id = b.id
+      LEFT JOIN categories c ON p.category_id = c.id
+      LEFT JOIN subcategories s ON p.sub_category_id = s.id
+      WHERE p.id = ?
+      GROUP BY p.id
+    `,
+      [result.insertId]
+    );
+
+    res.status(201).json({
+      ...newProduct[0],
+      sauces: newProduct[0].sauces ? JSON.parse(newProduct[0].sauces).filter(s => s.id) : []
+    });
+  } catch (err) {
+    console.error("Ошибка при добавлении продукта:", err.message);
+    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  }
+});
 });
 
 app.put("/products/:id", authenticateToken, (req, res) => {
-  upload(req, res, async (err) => {
-    if (err) {
-      console.error("Ошибка загрузки изображения:", err.message);
-      return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+upload(req, res, async (err) => {
+  if (err) {
+    console.error("Ошибка загрузки изображения:", err.message);
+    return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+  }
+
+  const { id } = req.params;
+  const { name, description, priceSmall, priceMedium, priceLarge, priceSingle, branchId, categoryId, subCategoryId, sauceIds } = req.body;
+  let imageKey;
+
+  try {
+    const [existing] = await db.query("SELECT image FROM products WHERE id = ?", [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ error: "Продукт не найден" });
     }
 
-    const { id } = req.params;
-    const { name, description, priceSmall, priceMedium, priceLarge, priceSingle, branchId, categoryId, subCategoryId, sauceIds } = req.body;
-    let imageKey;
-
-    try {
-      const [existing] = await db.query("SELECT image FROM products WHERE id = ?", [id]);
-      if (existing.length === 0) {
-        return res.status(404).json({ error: "Продукт не найден" });
+    if (req.file) {
+      imageKey = await uploadToS3(req.file);
+      if (existing[0].image) {
+        await deleteFromS3(existing[0].image);
       }
+    } else {
+      imageKey = existing[0].image;
+    }
 
-      if (req.file) {
-        imageKey = await uploadToS3(req.file);
-        if (existing[0].image) {
-          await deleteFromS3(existing[0].image);
+    await db.query(
+      `UPDATE products SET 
+        name = ?, description = ?, price_small = ?, price_medium = ?, price_large = ?, 
+        price_single = ?, branch_id = ?, category_id = ?, sub_category_id = ?, image = ? 
+      WHERE id = ?`,
+      [
+        name,
+        description || null,
+        priceSmall ? parseFloat(priceSmall) : null,
+        priceMedium ? parseFloat(priceMedium) : null,
+        priceLarge ? parseFloat(priceLarge) : null,
+        priceSingle ? parseFloat(priceSingle) : null,
+        branchId,
+        categoryId,
+        subCategoryId || null,
+        imageKey,
+        id,
+      ]
+    );
+
+    // Обновление соусов
+    await db.query("DELETE FROM products_sauces WHERE product_id = ?", [id]);
+    if (sauceIds) {
+      let sauceIdsArray = [];
+      try {
+        sauceIdsArray = Array.isArray(sauceIds) ? sauceIds : JSON.parse(sauceIds || '[]');
+        if (!Array.isArray(sauceIdsArray)) {
+          return res.status(400).json({ error: "sauceIds должен быть массивом" });
         }
-      } else {
-        imageKey = existing[0].image;
+      } catch (parseError) {
+        console.error("Ошибка парсинга sauceIds:", parseError.message);
+        return res.status(400).json({ error: "Некорректный формат sauceIds" });
       }
 
-      await db.query(
-        `UPDATE products SET 
-          name = ?, description = ?, price_small = ?, price_medium = ?, price_large = ?, 
-          price_single = ?, branch_id = ?, category_id = ?, sub_category_id = ?, image = ? 
-        WHERE id = ?`,
-        [
-          name,
-          description || null,
-          priceSmall ? parseFloat(priceSmall) : null,
-          priceMedium ? parseFloat(priceMedium) : null,
-          priceLarge ? parseFloat(priceLarge) : null,
-          priceSingle ? parseFloat(priceSingle) : null,
-          branchId,
-          categoryId,
-          subCategoryId || null,
-          imageKey,
-          id,
-        ]
-      );
+      console.log("sauceIds для обновления:", sauceIdsArray);
 
-      // Обновление соусов
-      await db.query("DELETE FROM products_sauces WHERE product_id = ?", [id]);
-      if (sauceIds) {
-        const sauceIdsArray = Array.isArray(sauceIds) ? sauceIds : JSON.parse(sauceIds || '[]');
-        for (const sauceId of sauceIdsArray) {
-          await db.query(
-            "INSERT INTO products_sauces (product_id, sauce_id) VALUES (?, ?)",
-            [id, sauceId]
-          );
+      for (const sauceId of sauceIdsArray) {
+        const [sauce] = await db.query("SELECT id FROM sauces WHERE id = ?", [sauceId]);
+        if (sauce.length === 0) {
+          console.warn(`Соус с id ${sauceId} не найден, пропускаем`);
+          continue; // Пропускаем несуществующий соус
         }
+        await db.query(
+          "INSERT INTO products_sauces (product_id, sauce_id) VALUES (?, ?)",
+          [id, sauceId]
+        );
       }
+    }
 
-      const [updatedProduct] = await db.query(
-        `
-        SELECT p.*, 
-               b.name as branch_name,
-               c.name as category_name,
-               s.name as subcategory_name,
-               COALESCE(
-                 (SELECT JSON_ARRAYAGG(
-                   JSON_OBJECT(
-                     'id', sa.id,
-                     'name', sa.name,
-                     'price', sa.price,
-                     'image', sa.image
-                   )
+    const [updatedProduct] = await db.query(
+      `
+      SELECT p.*, 
+             b.name as branch_name,
+             c.name as category_name,
+             s.name as subcategory_name,
+             COALESCE(
+               (SELECT JSON_ARRAYAGG(
+                 JSON_OBJECT(
+                   'id', sa.id,
+                   'name', sa.name,
+                   'price', sa.price,
+                   'image', sa.image
                  )
-                 FROM products_sauces ps
-                 LEFT JOIN sauces sa ON ps.sauce_id = sa.id
-                 WHERE ps.product_id = p.id AND sa.id IS NOT NULL),
-                 '[]'
-               ) as sauces
-        FROM products p
-        LEFT JOIN branches b ON p.branch_id = b.id
-        LEFT JOIN categories c ON p.category_id = c.id
-        LEFT JOIN subcategories s ON p.sub_category_id = s.id
-        WHERE p.id = ?
-        GROUP BY p.id
-      `,
-        [id]
-      );
+               )
+               FROM products_sauces ps
+               LEFT JOIN sauces sa ON ps.sauce_id = sa.id
+               WHERE ps.product_id = p.id AND sa.id IS NOT NULL),
+               '[]'
+             ) as sauces
+      FROM products p
+      LEFT JOIN branches b ON p.branch_id = b.id
+      LEFT JOIN categories c ON p.category_id = c.id
+      LEFT JOIN subcategories s ON p.sub_category_id = s.id
+      WHERE p.id = ?
+      GROUP BY p.id
+    `,
+      [id]
+    );
 
-      res.json({
-        ...updatedProduct[0],
-        sauces: updatedProduct[0].sauces ? JSON.parse(updatedProduct[0].sauces).filter(s => s.id) : []
-      });
-    } catch (err) {
-      console.error("Ошибка при обновлении продукта:", err.message);
-      res.status(500).json({ error: "Ошибка сервера: " + err.message });
-    }
-  });
+    res.json({
+      ...updatedProduct[0],
+      sauces: updatedProduct[0].sauces ? JSON.parse(updatedProduct[0].sauces).filter(s => s.id) : []
+    });
+  } catch (err) {
+    console.error("Ошибка при обновлении продукта:", err.message);
+    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  }
+});
 });
 
 app.delete("/products/:id", authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const [product] = await db.query("SELECT image FROM products WHERE id = ?", [id]);
-    if (product.length === 0) return res.status(404).json({ error: "Продукт не найден" });
+const { id } = req.params;
+try {
+  const [product] = await db.query("SELECT image FROM products WHERE id = ?", [id]);
+  if (product.length === 0) return res.status(404).json({ error: "Продукт не найден" });
 
-    if (product[0].image) {
-      await deleteFromS3(product[0].image);
-    }
-
-    await db.query("DELETE FROM products WHERE id = ?", [id]);
-    res.json({ message: "Продукт удален" });
-  } catch (err) {
-    console.error("Ошибка при удалении продукта:", err.message);
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  if (product[0].image) {
+    await deleteFromS3(product[0].image);
   }
+
+  await db.query("DELETE FROM products WHERE id = ?", [id]);
+  res.json({ message: "Продукт удален" });
+} catch (err) {
+  console.error("Ошибка при удалении продукта:", err.message);
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.post("/discounts", authenticateToken, async (req, res) => {
-  const { productId, discountPercent, expiresAt, isActive } = req.body;
-  if (!productId || !discountPercent) return res.status(400).json({ error: "ID продукта и процент скидки обязательны" });
-  if (discountPercent < 1 || discountPercent > 100) return res.status(400).json({ error: "Процент скидки должен быть от 1 до 100" });
+const { productId, discountPercent, expiresAt, isActive } = req.body;
+if (!productId || !discountPercent) return res.status(400).json({ error: "ID продукта и процент скидки обязательны" });
+if (discountPercent < 1 || discountPercent > 100) return res.status(400).json({ error: "Процент скидки должен быть от 1 до 100" });
 
-  try {
-    const [product] = await db.query("SELECT id FROM products WHERE id = ?", [productId]);
-    if (product.length === 0) return res.status(404).json({ error: "Продукт не найден" });
+try {
+  const [product] = await db.query("SELECT id FROM products WHERE id = ?", [productId]);
+  if (product.length === 0) return res.status(404).json({ error: "Продукт не найден" });
 
-    const [existingDiscount] = await db.query(`
-      SELECT id FROM discounts 
-      WHERE product_id = ? AND is_active = TRUE AND (expires_at IS NULL OR expires_at > NOW())
-    `, [productId]);
-    if (existingDiscount.length > 0) {
-      return res.status(400).json({ error: "Для этого продукта уже существует активная скидка" });
-    }
-
-    const [result] = await db.query(
-      "INSERT INTO discounts (product_id, discount_percent, expires_at, is_active) VALUES (?, ?, ?, ?)",
-      [productId, discountPercent, expiresAt || null, isActive !== undefined ? isActive : true]
-    );
-
-    const [newDiscount] = await db.query(`
-      SELECT d.*, p.name as product_name 
-      FROM discounts d
-      JOIN products p ON d.product_id = p.id
-      WHERE d.id = ?
-    `, [result.insertId]);
-
-    res.status(201).json(newDiscount[0]);
-  } catch (err) {
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  const [existingDiscount] = await db.query(`
+    SELECT id FROM discounts 
+    WHERE product_id = ? AND is_active = TRUE AND (expires_at IS NULL OR expires_at > NOW())
+  `, [productId]);
+  if (existingDiscount.length > 0) {
+    return res.status(400).json({ error: "Для этого продукта уже существует активная скидка" });
   }
+
+  const [result] = await db.query(
+    "INSERT INTO discounts (product_id, discount_percent, expires_at, is_active) VALUES (?, ?, ?, ?)",
+    [productId, discountPercent, expiresAt || null, isActive !== undefined ? isActive : true]
+  );
+
+  const [newDiscount] = await db.query(`
+    SELECT d.*, p.name as product_name 
+    FROM discounts d
+    JOIN products p ON d.product_id = p.id
+    WHERE d.id = ?
+  `, [result.insertId]);
+
+  res.status(201).json(newDiscount[0]);
+} catch (err) {
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.put("/discounts/:id", authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  const { productId, discountPercent, expiresAt, isActive } = req.body;
-  if (!productId || !discountPercent) return res.status(400).json({ error: "ID продукта и процент скидки обязательны" });
-  if (discountPercent < 1 || discountPercent > 100) return res.status(400).json({ error: "Процент скидки должен быть от 1 до 100" });
+const { id } = req.params;
+const { productId, discountPercent, expiresAt, isActive } = req.body;
+if (!productId || !discountPercent) return res.status(400).json({ error: "ID продукта и процент скидки обязательны" });
+if (discountPercent < 1 || discountPercent > 100) return res.status(400).json({ error: "Процент скидки должен быть от 1 до 100" });
+
+try {
+  const [discount] = await db.query("SELECT product_id FROM discounts WHERE id = ?", [id]);
+  if (discount.length === 0) return res.status(404).json({ error: "Скидка не найдена" });
+
+  const [product] = await db.query("SELECT id FROM products WHERE id = ?", [productId]);
+  if (product.length === 0) return res.status(404).json({ error: "Продукт не найден" });
+
+  if (discount[0].product_id !== productId) {
+    const [existingDiscount] = await db.query(`
+      SELECT id FROM discounts 
+      WHERE product_id = ? AND id != ? AND is_active = TRUE AND (expires_at IS NULL OR expires_at > NOW())
+    `, [productId, id]);
+    if (existingDiscount.length > 0) {
+      return res.status(400).json({ error: "Для этого продукта уже существует другая активная скидка" });
+    }
+  }
+
+  await db.query(
+    "UPDATE discounts SET product_id = ?, discount_percent = ?, expires_at = ?, is_active = ? WHERE id = ?",
+    [productId, discountPercent, expiresAt || null, isActive !== undefined ? isActive : true, id]
+  );
+
+  const [updatedDiscount] = await db.query(`
+    SELECT d.*, p.name as product_name 
+    FROM discounts d
+    JOIN products p ON d.product_id = p.id
+    WHERE d.id = ?
+  `, [id]);
+
+  res.json(updatedDiscount[0]);
+} catch (err) {
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
+});
+
+app.delete("/discounts/:id", authenticateToken, async (req, res) => {
+const { id } = req.params;
+try {
+  const [discount] = await db.query(`
+    SELECT d.*, p.name as product_name 
+    FROM discounts d
+    JOIN products p ON d.product_id = p.id
+    WHERE d.id = ?
+  `, [id]);
+  if (discount.length === 0) return res.status(404).json({ error: "Скидка не найдена" });
+
+  await db.query("DELETE FROM discounts WHERE id = ?", [id]);
+  res.json({ message: "Скидка удалена", product: { id: discount[0].product_id, name: discount[0].product_name } });
+} catch (err) {
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
+});
+
+app.post("/banners", authenticateToken, (req, res) => {
+upload(req, res, async (err) => {
+  if (err) {
+    console.error("Ошибка загрузки изображения:", err.message);
+    return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+  }
+
+  const { title, description, button_text, promo_code_id } = req.body;
+  let imageKey;
+
+  if (!req.file) {
+    return res.status(400).json({ error: "Изображение обязательно" });
+  }
 
   try {
-    const [discount] = await db.query("SELECT product_id FROM discounts WHERE id = ?", [id]);
-    if (discount.length === 0) return res.status(404).json({ error: "Скидка не найдена" });
+    imageKey = await uploadToS3(req.file);
+  } catch (s3Err) {
+    console.error("Ошибка при загрузке в S3:", s3Err.message);
+    return res.status(500).json({ error: "Ошибка загрузки в S3: " + s3Err.message });
+  }
 
-    const [product] = await db.query("SELECT id FROM products WHERE id = ?", [productId]);
-    if (product.length === 0) return res.status(404).json({ error: "Продукт не найден" });
+  try {
+    if (promo_code_id) {
+      const [promo] = await db.query("SELECT id FROM promo_codes WHERE id = ?", [promo_code_id]);
+      if (promo.length === 0) {
+        return res.status(404).json({ error: "Промокод не найден" });
+      }
+    }
 
-    if (discount[0].product_id !== productId) {
-      const [existingDiscount] = await db.query(`
-        SELECT id FROM discounts 
-        WHERE product_id = ? AND id != ? AND is_active = TRUE AND (expires_at IS NULL OR expires_at > NOW())
-      `, [productId, id]);
-      if (existingDiscount.length > 0) {
-        return res.status(400).json({ error: "Для этого продукта уже существует другая активная скидка" });
+    const [result] = await db.query(
+      "INSERT INTO banners (image, title, description, button_text, promo_code_id) VALUES (?, ?, ?, ?, ?)",
+      [imageKey, title || null, description || null, button_text || null, promo_code_id || null]
+    );
+
+    const [newBanner] = await db.query(`
+      SELECT b.*, pc.code AS promo_code, pc.discount_percent
+      FROM banners b
+      LEFT JOIN promo_codes pc ON b.promo_code_id = pc.id
+      WHERE b.id = ?
+    `, [result.insertId]);
+
+    res.status(201).json({
+      ...newBanner[ moody0],
+      image: `https://nukesul-brepb-651f.twc1.net/product-image/${newBanner[0].image.split("/").pop()}`
+    });
+  } catch (err) {
+    console.error("Ошибка при добавлении баннера:", err.message);
+    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  }
+});
+});
+
+app.put("/banners/:id", authenticateToken, (req, res) => {
+upload(req, res, async (err) => {
+  if (err) {
+    console.error("Ошибка загрузки изображения:", err.message);
+    return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+  }
+
+  const { id } = req.params;
+  const { title, description, button_text, promo_code_id } = req.body;
+  let imageKey;
+
+  try {
+    const [existing] = await db.query("SELECT image FROM banners WHERE id = ?", [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ error: "Баннер не найден" });
+    }
+
+    if (req.file) {
+      imageKey = await uploadToS3(req.file);
+      if (existing[0].image) {
+        await deleteFromS3(existing[0].image);
+      }
+    } else {
+      imageKey = existing[0].image;
+    }
+
+    if (promo_code_id) {
+      const [promo] = await db.query("SELECT id FROM promo_codes WHERE id = ?", [promo_code_id]);
+      if (promo.length === 0) {
+        return res.status(404).json({ error: "Промокод не найден" });
       }
     }
 
     await db.query(
-      "UPDATE discounts SET product_id = ?, discount_percent = ?, expires_at = ?, is_active = ? WHERE id = ?",
-      [productId, discountPercent, expiresAt || null, isActive !== undefined ? isActive : true, id]
+      "UPDATE banners SET image = ?, title = ?, description = ?, button_text = ?, promo_code_id = ? WHERE id = ?",
+      [imageKey, title || null, description || null, button_text || null, promo_code_id || null, id]
     );
 
-    const [updatedDiscount] = await db.query(`
-      SELECT d.*, p.name as product_name 
-      FROM discounts d
-      JOIN products p ON d.product_id = p.id
-      WHERE d.id = ?
+    const [updatedBanner] = await db.query(`
+      SELECT b.*, pc.code AS promo_code, pc.discount_percent
+      FROM banners b
+      LEFT JOIN promo_codes pc ON b.promo_code_id = pc.id
+      WHERE b.id = ?
     `, [id]);
 
-    res.json(updatedDiscount[0]);
+    res.json({
+      ...updatedBanner[0],
+      image: `https://nukesul-brepb-651f.twc1.net/product-image/${updatedBanner[0].image.split("/").pop()}`
+    });
   } catch (err) {
+    console.error("Ошибка при обновлении баннера:", err.message);
     res.status(500).json({ error: "Ошибка сервера: " + err.message });
   }
 });
-
-app.delete("/discounts/:id", authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const [discount] = await db.query(`
-      SELECT d.*, p.name as product_name 
-      FROM discounts d
-      JOIN products p ON d.product_id = p.id
-      WHERE d.id = ?
-    `, [id]);
-    if (discount.length === 0) return res.status(404).json({ error: "Скидка не найдена" });
-
-    await db.query("DELETE FROM discounts WHERE id = ?", [id]);
-    res.json({ message: "Скидка удалена", product: { id: discount[0].product_id, name: discount[0].product_name } });
-  } catch (err) {
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
-  }
-});
-
-app.post("/banners", authenticateToken, (req, res) => {
-  upload(req, res, async (err) => {
-    if (err) {
-      console.error("Ошибка загрузки изображения:", err.message);
-      return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
-    }
-
-    const { title, description, button_text, promo_code_id } = req.body;
-    let imageKey;
-
-    if (!req.file) {
-      return res.status(400).json({ error: "Изображение обязательно" });
-    }
-
-    try {
-      imageKey = await uploadToS3(req.file);
-    } catch (s3Err) {
-      console.error("Ошибка при загрузке в S3:", s3Err.message);
-      return res.status(500).json({ error: "Ошибка загрузки в S3: " + s3Err.message });
-    }
-
-    try {
-      if (promo_code_id) {
-        const [promo] = await db.query("SELECT id FROM promo_codes WHERE id = ?", [promo_code_id]);
-        if (promo.length === 0) {
-          return res.status(404).json({ error: "Промокод не найден" });
-        }
-      }
-
-      const [result] = await db.query(
-        "INSERT INTO banners (image, title, description, button_text, promo_code_id) VALUES (?, ?, ?, ?, ?)",
-        [imageKey, title || null, description || null, button_text || null, promo_code_id || null]
-      );
-
-      const [newBanner] = await db.query(`
-        SELECT b.*, pc.code AS promo_code, pc.discount_percent
-        FROM banners b
-        LEFT JOIN promo_codes pc ON b.promo_code_id = pc.id
-        WHERE b.id = ?
-      `, [result.insertId]);
-
-      res.status(201).json({
-        ...newBanner[0],
-        image: `https://nukesul-brepb-651f.twc1.net/product-image/${newBanner[0].image.split("/").pop()}`
-      });
-    } catch (err) {
-      console.error("Ошибка при добавлении баннера:", err.message);
-      res.status(500).json({ error: "Ошибка сервера: " + err.message });
-    }
-  });
-});
-
-app.put("/banners/:id", authenticateToken, (req, res) => {
-  upload(req, res, async (err) => {
-    if (err) {
-      console.error("Ошибка загрузки изображения:", err.message);
-      return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
-    }
-
-    const { id } = req.params;
-    const { title, description, button_text, promo_code_id } = req.body;
-    let imageKey;
-
-    try {
-      const [existing] = await db.query("SELECT image FROM banners WHERE id = ?", [id]);
-      if (existing.length === 0) {
-        return res.status(404).json({ error: "Баннер не найден" });
-      }
-
-      if (req.file) {
-        imageKey = await uploadToS3(req.file);
-        if (existing[0].image) {
-          await deleteFromS3(existing[0].image);
-        }
-      } else {
-        imageKey = existing[0].image;
-      }
-
-      if (promo_code_id) {
-        const [promo] = await db.query("SELECT id FROM promo_codes WHERE id = ?", [promo_code_id]);
-        if (promo.length === 0) {
-          return res.status(404).json({ error: "Промокод не найден" });
-        }
-      }
-
-      await db.query(
-        "UPDATE banners SET image = ?, title = ?, description = ?, button_text = ?, promo_code_id = ? WHERE id = ?",
-        [imageKey, title || null, description || null, button_text || null, promo_code_id || null, id]
-      );
-
-      const [updatedBanner] = await db.query(`
-        SELECT b.*, pc.code AS promo_code, pc.discount_percent
-        FROM banners b
-        LEFT JOIN promo_codes pc ON b.promo_code_id = pc.id
-        WHERE b.id = ?
-      `, [id]);
-
-      res.json({
-        ...updatedBanner[0],
-        image: `https://nukesul-brepb-651f.twc1.net/product-image/${updatedBanner[0].image.split("/").pop()}`
-      });
-    } catch (err) {
-      console.error("Ошибка при обновлении баннера:", err.message);
-      res.status(500).json({ error: "Ошибка сервера: " + err.message });
-    }
-  });
 });
 
 app.delete("/banners/:id", authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const [banner] = await db.query("SELECT image FROM banners WHERE id = ?", [id]);
-    if (banner.length === 0) return res.status(404).json({ error: "Баннер не найден" });
+const { id } = req.params;
+try {
+  const [banner] = await db.query("SELECT image FROM banners WHERE id = ?", [id]);
+  if (banner.length === 0) return res.status(404).json({ error: "Баннер не найден" });
 
-    if (banner[0].image) {
-      await deleteFromS3(banner[0].image);
-    }
-
-    await db.query("DELETE FROM banners WHERE id = ?", [id]);
-    res.json({ message: "Баннер удален" });
-  } catch (err) {
-    console.error("Ошибка при удалении баннера:", err.message);
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  if (banner[0].image) {
+    await deleteFromS3(banner[0].image);
   }
+
+  await db.query("DELETE FROM banners WHERE id = ?", [id]);
+  res.json({ message: "Баннер удален" });
+} catch (err) {
+  console.error("Ошибка при удалении баннера:", err.message);
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.post("/sauces", authenticateToken, (req, res) => {
-  upload(req, res, async (err) => {
-    if (err) {
-      console.error("Ошибка загрузки изображения:", err.message);
-      return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+upload(req, res, async (err) => {
+  if (err) {
+    console.error("Ошибка загрузки изображения:", err.message);
+    return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+  }
+
+  const { name, price } = req.body;
+  let imageKey = null;
+
+  if (!name || !price) {
+    return res.status(400).json({ error: "Название и цена обязательны" });
+  }
+
+  try {
+    if (req.file) {
+      imageKey = await uploadToS3(req.file);
     }
 
-    const { name, price } = req.body;
-    let imageKey = null;
+    const [result] = await db.query(
+      "INSERT INTO sauces (name, price, image) VALUES (?, ?, ?)",
+      [name, parseFloat(price), imageKey]
+    );
 
-    if (!name || !price) {
-      return res.status(400).json({ error: "Название и цена обязательны" });
-    }
-
-    try {
-      if (req.file) {
-        imageKey = await uploadToS3(req.file);
-      }
-
-      const [result] = await db.query(
-        "INSERT INTO sauces (name, price, image) VALUES (?, ?, ?)",
-        [name, parseFloat(price), imageKey]
-      );
-
-      const [newSauce] = await db.query("SELECT * FROM sauces WHERE id = ?", [result.insertId]);
-      res.status(201).json({
-        ...newSauce[0],
-        image: newSauce[0].image ? `https://nukesul-brepb-651f.twc1.net/product-image/${newSauce[0].image.split("/").pop()}` : null
-      });
-    } catch (err) {
-      console.error("Ошибка при добавлении соуса:", err.message);
-      res.status(500).json({ error: "Ошибка сервера: " + err.message });
-    }
-  });
+    const [newSauce] = await db.query("SELECT * FROM sauces WHERE id = ?", [result.insertId]);
+    res.status(201).json({
+      ...newSauce[0],
+      image: newSauce[0].image ? `https://nukesul-brepb-651f.twc1.net/product-image/${newSauce[0].image.split("/").pop()}` : null
+    });
+  } catch (err) {
+    console.error("Ошибка при добавлении соуса:", err.message);
+    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  }
+});
 });
 
 app.put("/sauces/:id", authenticateToken, (req, res) => {
-  upload(req, res, async (err) => {
-    if (err) {
-      console.error("Ошибка загрузки изображения:", err.message);
-      return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+upload(req, res, async (err) => {
+  if (err) {
+    console.error("Ошибка загрузки изображения:", err.message);
+    return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+  }
+
+  const { id } = req.params;
+  const { name, price } = req.body;
+  let imageKey;
+
+  try {
+    const [existing] = await db.query("SELECT image FROM sauces WHERE id = ?", [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ error: "Соус не найден" });
     }
 
-    const { id } = req.params;
-    const { name, price } = req.body;
-    let imageKey;
-
-    try {
-      const [existing] = await db.query("SELECT image FROM sauces WHERE id = ?", [id]);
-      if (existing.length === 0) {
-        return res.status(404).json({ error: "Соус не найден" });
+    if (req.file) {
+      imageKey = await uploadToS3(req.file);
+      if (existing[0].image) {
+        await deleteFromS3(existing[0].image);
       }
-
-      if (req.file) {
-        imageKey = await uploadToS3(req.file);
-        if (existing[0].image) {
-          await deleteFromS3(existing[0].image);
-        }
-      } else {
-        imageKey = existing[0].image;
-      }
-
-      await db.query(
-        "UPDATE sauces SET name = ?, price = ?, image = ? WHERE id = ?",
-        [name, parseFloat(price), imageKey, id]
-      );
-
-      const [updatedSauce] = await db.query("SELECT * FROM sauces WHERE id = ?", [id]);
-      res.json({
-        ...updatedSauce[0],
-        image: updatedSauce[0].image ? `https://nukesul-brepb-651f.twc1.net/product-image/${updatedSauce[0].image.split("/").pop()}` : null
-      });
-    } catch (err) {
-      console.error("Ошибка при обновлении соуса:", err.message);
-      res.status(500).json({ error: "Ошибка сервера: " + err.message });
+    } else {
+      imageKey = existing[0].image;
     }
-  });
+
+    await db.query(
+      "UPDATE sauces SET name = ?, price = ?, image = ? WHERE id = ?",
+      [name, parseFloat(price), imageKey, id]
+    );
+
+    const [updatedSauce] = await db.query("SELECT * FROM sauces WHERE id = ?", [id]);
+    res.json({
+      ...updatedSauce[0],
+      image: updatedSauce[0].image ? `https://nukesul-brepb-651f.twc1.net/product-image/${updatedSauce[0].image.split("/").pop()}` : null
+    });
+  } catch (err) {
+    console.error("Ошибка при обновлении соуса:", err.message);
+    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  }
+});
 });
 
 app.delete("/sauces/:id", authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const [sauce] = await db.query("SELECT image FROM sauces WHERE id = ?", [id]);
-    if (sauce.length === 0) return res.status(404).json({ error: "Соус не найден" });
+const { id } = req.params;
+try {
+  const [sauce] = await db.query("SELECT image FROM sauces WHERE id = ?", [id]);
+  if (sauce.length === 0) return res.status(404).json({ error: "Соус не найден" });
 
-    if (sauce[0].image) {
-      await deleteFromS3(sauce[0].image);
-    }
-
-    await db.query("DELETE FROM sauces WHERE id = ?", [id]);
-    res.json({ message: "Соус удален" });
-  } catch (err) {
-    console.error("Ошибка при удалении соуса:", err.message);
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  if (sauce[0].image) {
+    await deleteFromS3(sauce[0].image);
   }
+
+  await db.query("DELETE FROM sauces WHERE id = ?", [id]);
+  res.json({ message: "Соус удален" });
+} catch (err) {
+  console.error("Ошибка при удалении соуса:", err.message);
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.post("/stories", authenticateToken, (req, res) => {
-  upload(req, res, async (err) => {
-    if (err) {
-      console.error("Ошибка загрузки изображения:", err.message);
-      return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
-    }
+upload(req, res, async (err) => {
+  if (err) {
+    console.error("Ошибка загрузки изображения:", err.message);
+    return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+  }
 
-    let imageKey;
+  let imageKey;
 
-    if (!req.file) {
-      return res.status(400).json({ error: "Изображение обязательно" });
-    }
+  if (!req.file) {
+    return res.status(400).json({ error: "Изображение обязательно" });
+  }
 
-    try {
-      imageKey = await uploadToS3(req.file);
-    } catch (s3Err) {
-      console.error("Ошибка при загрузке в S3:", s3Err.message);
-      return res.status(500).json({ error: "Ошибка загрузки в S3: " + s3Err.message });
-    }
+  try {
+    imageKey = await uploadToS3(req.file);
+  } catch (s3Err) {
+    console.error("Ошибка при загрузке в S3:", s3Err.message);
+    return res.status(500).json({ error: "Ошибка загрузки в S3: " + s3Err.message });
+  }
 
-    try {
-      const [result] = await db.query("INSERT INTO stories (image) VALUES (?)", [imageKey]);
-      res.status(201).json({ id: result.insertId, image: `https://nukesul-brepb-651f.twc1.net/product-image/${imageKey.split("/").pop()}` });
-    } catch (err) {
-      console.error("Ошибка при добавлении истории:", err.message);
-      res.status(500).json({ error: "Ошибка сервера: " + err.message });
-    }
-  });
+  try {
+    const [result] = await db.query("INSERT INTO stories (image) VALUES (?)", [imageKey]);
+    res.status(201).json({ id: result.insertId, image: `https://nukesul-brepb-651f.twc1.net/product-image/${imageKey.split("/").pop()}` });
+  } catch (err) {
+    console.error("Ошибка при добавлении истории:", err.message);
+    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  }
+});
 });
 
 app.put("/stories/:id", authenticateToken, (req, res) => {
-  upload(req, res, async (err) => {
-    if (err) {
-      console.error("Ошибка загрузки изображения:", err.message);
-      return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+upload(req, res, async (err) => {
+  if (err) {
+    console.error("Ошибка загрузки изображения:", err.message);
+    return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+  }
+
+  const { id } = req.params;
+  let imageKey;
+
+  try {
+    const [existing] = await db.query("SELECT image FROM stories WHERE id = ?", [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ error: "История не найдена" });
     }
 
-    const { id } = req.params;
-    let imageKey;
-
-    try {
-      const [existing] = await db.query("SELECT image FROM stories WHERE id = ?", [id]);
-      if (existing.length === 0) {
-        return res.status(404).json({ error: "История не найдена" });
+    if (req.file) {
+      imageKey = await uploadToS3(req.file);
+      if (existing[0].image) {
+        await deleteFromS3(existing[0].image);
       }
-
-      if (req.file) {
-        imageKey = await uploadToS3(req.file);
-        if (existing[0].image) {
-          await deleteFromS3(existing[0].image);
-        }
-      } else {
-        imageKey = existing[0].image;
-      }
-
-      await db.query("UPDATE stories SET image = ? WHERE id = ?", [imageKey, id]);
-      res.json({ id, image: `https://nukesul-brepb-651f.twc1.net/product-image/${imageKey.split("/").pop()}` });
-    } catch (err) {
-      console.error("Ошибка при обновлении истории:", err.message);
-      res.status(500).json({ error: "Ошибка сервера: " + err.message });
+    } else {
+      imageKey = existing[0].image;
     }
-  });
+
+    await db.query("UPDATE stories SET image = ? WHERE id = ?", [imageKey, id]);
+    res.json({ id, image: `https://nukesul-brepb-651f.twc1.net/product-image/${imageKey.split("/").pop()}` });
+  } catch (err) {
+    console.error("Ошибка при обновлении истории:", err.message);
+    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  }
+});
 });
 
 app.delete("/stories/:id", authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const [story] = await db.query("SELECT image FROM stories WHERE id = ?", [id]);
-    if (story.length === 0) return res.status(404).json({ error: "История не найдена" });
+const { id } = req.params;
+try {
+  const [story] = await db.query("SELECT image FROM stories WHERE id = ?", [id]);
+  if (story.length === 0) return res.status(404).json({ error: "История не найдена" });
 
-    if (story[0].image) {
-      await deleteFromS3(story[0].image);
-    }
-
-    await db.query("DELETE FROM stories WHERE id = ?", [id]);
-    res.json({ message: "История удалена" });
-  } catch (err) {
-    console.error("Ошибка при удалении истории:", err.message);
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  if (story[0].image) {
+    await deleteFromS3(story[0].image);
   }
+
+  await db.query("DELETE FROM stories WHERE id = ?", [id]);
+  res.json({ message: "История удалена" });
+} catch (err) {
+  console.error("Ошибка при удалении истории:", err.message);
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.post("/register", async (req, res) => {
-  const { name, email, password } = req.body;
-  if (!name || !email || !password) {
-    return res.status(400).json({ error: "Все поля обязательны" });
+const { name, email, password } = req.body;
+if (!name || !email || !password) {
+  return res.status(400).json({ error: "Все поля обязательны" });
+}
+
+try {
+  const [existingUsers] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
+  if (existingUsers.length > 0) {
+    return res.status(400).json({ error: "Пользователь с таким email уже существует" });
   }
 
-  try {
-    const [existingUsers] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
-    if (existingUsers.length > 0) {
-      return res.status(400).json({ error: "Пользователь с таким email уже существует" });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const [result] = await db.query("INSERT INTO users (name, email, password) VALUES (?, ?, ?)", [name, email, hashedPassword]);
-    const token = jwt.sign({ id: result.insertId, email }, JWT_SECRET, { expiresIn: "1h" });
-    res.status(201).json({ token, user: { id: result.insertId, name, email } });
-  } catch (err) {
-    console.error("Ошибка при регистрации:", err.message);
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
-  }
+  const hashedPassword = await bcrypt.hash(password, 10);
+  const [result] = await db.query("INSERT INTO users (name, email, password) VALUES (?, ?, ?)", [name, email, hashedPassword]);
+  const token = jwt.sign({ id: result.insertId, email }, JWT_SECRET, { expiresIn: "1h" });
+  res.status(201).json({ token, user: { id: result.insertId, name, email } });
+} catch (err) {
+  console.error("Ошибка при регистрации:", err.message);
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.post("/login", async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: "Введите email и пароль" });
+const { email, password } = req.body;
+if (!email || !password) {
+  return res.status(400).json({ error: "Введите email и пароль" });
+}
+
+try {
+  const [users] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
+  if (users.length === 0) {
+    return res.status(401).json({ error: "Неверный email или пароль" });
   }
 
-  try {
-    const [users] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
-    if (users.length === 0) {
-      return res.status(401).json({ error: "Неверный email или пароль" });
-    }
-
-    const user = users[0];
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ error: "Неверный email или пароль" });
-    }
-
-    const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: "1h" });
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
-  } catch (err) {
-    console.error("Ошибка при входе:", err.message);
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  const user = users[0];
+  const isMatch = await bcrypt.compare(password, user.password);
+  if (!isMatch) {
+    return res.status(401).json({ error: "Неверный email или пароль" });
   }
+
+  const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: "1h" });
+  res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
+} catch (err) {
+  console.error("Ошибка при входе:", err.message);
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.get("/users", authenticateToken, async (req, res) => {
-  try {
-    const [users] = await db.query("SELECT id, name, email FROM users");
-    res.json(users);
-  } catch (err) {
-    console.error("Ошибка при получении пользователей:", err.message);
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
-  }
+try {
+  const [users] = await db.query("SELECT id, name, email FROM users");
+  res.json(users);
+} catch (err) {
+  console.error("Ошибка при получении пользователей:", err.message);
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 initializeServer();
