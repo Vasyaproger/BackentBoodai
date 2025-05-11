@@ -588,7 +588,7 @@ ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} �
           text: orderText,
           parse_mode: "Markdown",
         }
-      );
+      );//22
       console.log(`Сообщение успешно отправлено в Telegram:`, response.data);
     } catch (telegramError) {
       console.error("Ошибка отправки в Telegram:", telegramError.response?.data || telegramError.message);
