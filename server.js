@@ -8,12 +8,20 @@ const path = require("path");
 const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
 const { Upload } = require("@aws-sdk/lib-storage");
 const axios = require("axios");
+const admin = require("firebase-admin"); // Импорт Firebase Admin SDK
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const JWT_SECRET = "your_jwt_secret_key";
+
+
+// Инициализация Firebase Admin SDK
+const serviceAccount = require("./boodai-pizza-firebase-adminsdk.json"); // Путь к файлу учетных данных
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
 
 // Настройка S3Client для Timeweb Cloud
 const s3Client = new S3Client({
@@ -428,7 +436,7 @@ app.get("/api/public/branches/:branchId/products", async (req, res) => {
              ) as sauces
       FROM products p
       LEFT JOIN categories c ON p.category_id = c.id
-      LEFT JOIN discounts d ON pTEN id = d.product_id AND d.is_active = TRUE AND (d.expires_at IS NULL OR d.expires_at > NOW())
+      LEFT JOIN discounts d ON p.id = d.product_id AND d.is_active = TRUE AND (d.expires_at IS NULL OR d.expires_at > NOW())
       WHERE p.branch_id = ?
       GROUP BY p.id
     `, [branchId]);
