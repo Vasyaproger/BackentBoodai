@@ -48,8 +48,8 @@ const testS3Connection = async () => {
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 5 * 1024 * 1024 // Ограничение по размеру (5MB)
-  }
+    fileSize: 5 * 1024 * 1024, // Ограничение по размеру (5MB)
+  },
 }).single("image");
 
 // Функция для загрузки изображения в S3
@@ -412,33 +412,47 @@ app.get("/api/public/branches/:branchId/products", async (req, res) => {
       SELECT p.id, p.name, p.description, p.price_small, p.price_medium, p.price_large, 
              p.price_single AS price, p.image AS image_url, c.name AS category,
              d.discount_percent, d.expires_at,
-             JSON_ARRAYAGG(
-               JSON_OBJECT(
-                 'id', s.id,
-                 'name', s.name,
-                 'price', s.price,
-                 'image', s.image
+             COALESCE(
+               (SELECT JSON_ARRAYAGG(
+                 JSON_OBJECT(
+                   'id', s.id,
+                   'name', s.name,
+                   'price', s.price,
+                   'image', s.image
+                 )
                )
+               FROM products_sauces ps
+               LEFT JOIN sauces s ON ps.sauce_id = s.id
+               WHERE ps.product_id = p.id AND s.id IS NOT NULL),
+               '[]'
              ) as sauces
       FROM products p
       LEFT JOIN categories c ON p.category_id = c.id
       LEFT JOIN discounts d ON p.id = d.product_id AND d.is_active = TRUE AND (d.expires_at IS NULL OR d.expires_at > NOW())
-      LEFT JOIN products_sauces ps ON p.id = ps.product_id
-      LEFT JOIN sauces s ON ps.sauce_id = s.id
       WHERE p.branch_id = ?
       GROUP BY p.id
     `, [branchId]);
-    
+
     // Парсим JSON в массиве sauces
-    const parsedProducts = products.map(product => ({
-      ...product,
-      sauces: product.sauces ? JSON.parse(product.sauces).filter(s => s.id) : []
-    }));
-    
+    const parsedProducts = products.map(product => {
+      let sauces = [];
+      try {
+        console.log(`Сырые данные sauces для продукта ${product.id}:`, product.sauces);
+        sauces = product.sauces ? JSON.parse(product.sauces).filter(s => s && s.id) : [];
+      } catch (parseError) {
+        console.error(`Ошибка парсинга JSON для продукта ${product.id}:`, parseError.message);
+        sauces = [];
+      }
+      return {
+        ...product,
+        sauces,
+      };
+    });
+
     res.json(parsedProducts);
   } catch (err) {
     console.error("Ошибка при получении продуктов:", err.message);
-    res.status(500).json({ error: "Ошибка сервера" });
+    res.status(500).json({ error: "Ошибка сервера: " + err.message });
   }
 });
 
@@ -573,7 +587,7 @@ ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} �
       });
     }
 
-    const TELEGRAM_BOT_TOKEN = "7858016810:AAELHxlmZORP7iHEIWdqYKw-rHl-q3aB8yY"; // Замените на ваш токен Telegram бота
+    const TELEGRAM_BOT_TOKEN = "7858016810:AAELHxlmZORP7iHEIWdqYKw-rHl-q3aB8yY";
     if (!TELEGRAM_BOT_TOKEN) {
       console.error("TELEGRAM_BOT_TOKEN не указан");
       return res.status(500).json({ error: "Ошибка сервера: TELEGRAM_BOT_TOKEN не настроен" });
@@ -588,7 +602,7 @@ ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} �
           text: orderText,
           parse_mode: "Markdown",
         }
-      );//22
+      );
       console.log(`Сообщение успешно отправлено в Telegram:`, response.data);
     } catch (telegramError) {
       console.error("Ошибка отправки в Telegram:", telegramError.response?.data || telegramError.message);
@@ -649,31 +663,46 @@ app.get("/products", authenticateToken, async (req, res) => {
              d.discount_percent,
              d.expires_at,
              d.is_active as discount_active,
-             JSON_ARRAYAGG(
-               JSON_OBJECT(
-                 'id', sa.id,
-                 'name', sa.name,
-                 'price', sa.price,
-                 'image', sa.image
+             COALESCE(
+               (SELECT JSON_ARRAYAGG(
+                 JSON_OBJECT(
+                   'id', sa.id,
+                   'name', sa.name,
+                   'price', sa.price,
+                   'image', sa.image
+                 )
                )
+               FROM products_sauces ps
+               LEFT JOIN sauces sa ON ps.sauce_id = sa.id
+               WHERE ps.product_id = p.id AND sa.id IS NOT NULL),
+               '[]'
              ) as sauces
       FROM products p
       LEFT JOIN branches b ON p.branch_id = b.id
       LEFT JOIN categories c ON p.category_id = c.id
       LEFT JOIN subcategories s ON p.sub_category_id = s.id
       LEFT JOIN discounts d ON p.id = d.product_id AND d.is_active = TRUE AND (d.expires_at IS NULL OR d.expires_at > NOW())
-      LEFT JOIN products_sauces ps ON p.id = ps.product_id
-      LEFT JOIN sauces sa ON ps.sauce_id = sa.id
       GROUP BY p.id
     `);
-    
-    const parsedProducts = products.map(product => ({
-      ...product,
-      sauces: product.sauces ? JSON.parse(product.sauces).filter(s => s.id) : []
-    }));
-    
+
+    const parsedProducts = products.map(product => {
+      let sauces = [];
+      try {
+        console.log(`Сырые данные sauces для продукта ${product.id}:`, product.sauces);
+        sauces = product.sauces ? JSON.parse(product.sauces).filter(s => s && s.id) : [];
+      } catch (parseError) {
+        console.error(`Ошибка парсинга JSON для продукта ${product.id}:`, parseError.message);
+        sauces = [];
+      }
+      return {
+        ...product,
+        sauces,
+      };
+    });
+
     res.json(parsedProducts);
   } catch (err) {
+    console.error("Ошибка при получении продуктов:", err.message);
     res.status(500).json({ error: "Ошибка сервера: " + err.message });
   }
 });
@@ -1002,20 +1031,24 @@ app.post("/products", authenticateToken, (req, res) => {
                b.name as branch_name, 
                c.name as category_name,
                s.name as subcategory_name,
-               JSON_ARRAYAGG(
-                 JSON_OBJECT(
-                   'id', sa.id,
-                   'name', sa.name,
-                   'price', sa.price,
-                   'image', sa.image
+               COALESCE(
+                 (SELECT JSON_ARRAYAGG(
+                   JSON_OBJECT(
+                     'id', sa.id,
+                     'name', sa.name,
+                     'price', sa.price,
+                     'image', sa.image
+                   )
                  )
+                 FROM products_sauces ps
+                 LEFT JOIN sauces sa ON ps.sauce_id = sa.id
+                 WHERE ps.product_id = p.id AND sa.id IS NOT NULL),
+                 '[]'
                ) as sauces
         FROM products p
         LEFT JOIN branches b ON p.branch_id = b.id
         LEFT JOIN categories c ON p.category_id = c.id
         LEFT JOIN subcategories s ON p.sub_category_id = s.id
-        LEFT JOIN products_sauces ps ON p.id = ps.product_id
-        LEFT JOIN sauces sa ON ps.sauce_id = sa.id
         WHERE p.id = ?
         GROUP BY p.id
       `,
@@ -1094,23 +1127,27 @@ app.put("/products/:id", authenticateToken, (req, res) => {
       const [updatedProduct] = await db.query(
         `
         SELECT p.*, 
-               b.name as branch_name,
+               b.name as branch_name,
                c.name as category_name,
                s.name as subcategory_name,
-               JSON_ARRAYAGG(
-                 JSON_OBJECT(
-                   'id', sa.id,
-                   'name', sa.name,
-                   'price', sa.price,
-                   'image', sa.image
+               COALESCE(
+                 (SELECT JSON_ARRAYAGG(
+                   JSON_OBJECT(
+                     'id', sa.id,
+                     'name', sa.name,
+                     'price', sa.price,
+                     'image', sa.image
+                   )
                  )
+                 FROM products_sauces ps
+                 LEFT JOIN sauces sa ON ps.sauce_id = sa.id
+                 WHERE ps.product_id = p.id AND sa.id IS NOT NULL),
+                 '[]'
                ) as sauces
         FROM products p
         LEFT JOIN branches b ON p.branch_id = b.id
         LEFT JOIN categories c ON p.category_id = c.id
         LEFT JOIN subcategories s ON p.sub_category_id = s.id
-        LEFT JOIN products_sauces ps ON p.id = ps.product_id
-        LEFT JOIN sauces sa ON ps.sauce_id = sa.id
         WHERE p.id = ?
         GROUP BY p.id
       `,
