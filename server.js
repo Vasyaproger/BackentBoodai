@@ -573,7 +573,7 @@ ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} �
       });
     }
 
-    const TELEGRAM_BOT_TOKEN = ""; // Замените на ваш токен Telegram бота
+    const TELEGRAM_BOT_TOKEN = "7858016810:AAELHxlmZORP7iHEIWdqYKw-rHl-q3aB8yY"; // Замените на ваш токен Telegram бота
     if (!TELEGRAM_BOT_TOKEN) {
       console.error("TELEGRAM_BOT_TOKEN не указан");
       return res.status(500).json({ error: "Ошибка сервера: TELEGRAM_BOT_TOKEN не настроен" });
