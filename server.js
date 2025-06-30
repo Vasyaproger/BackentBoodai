@@ -540,13 +540,27 @@ app.post("/api/public/send-order", async (req, res) => {
     // Функция экранирования специальных символов для MarkdownV2
     const escapeMarkdown = (text) => {
       if (!text) return "Нет";
-      return String(text).replace(/([_*[\]()~`>#+-=|{}.!\\])/g, "\\$1");
+      return String(text).replace(/([_*[\]()~`>#+-=|{}.!\\-])/g, "\\$1");
     };
+
+    // Логирование входных данных для отладки
+    console.log("Входные данные заказа:", {
+      orderDetails,
+      deliveryDetails,
+      cartItems,
+      discount,
+      promoCode,
+      branchId,
+    });
+
+    // Получение имени филиала
+    const [branchResult] = await db.query("SELECT name FROM branches WHERE id = ?", [branchId]);
+    const branchName = branchResult[0]?.name || "Неизвестный филиал";
 
     // Формирование текста заказа
     const orderText = `
 📦 *Новый заказ:*
-🏪 Филиал: ${escapeMarkdown((await db.query("SELECT name FROM branches WHERE id = ?", [branchId]))[0][0]?.name || "Неизвестный филиал")}
+🏪 Филиал: ${escapeMarkdown(branchName)}
 👤 Имя: ${escapeMarkdown(orderDetails.name || deliveryDetails.name)}
 📞 Телефон: ${escapeMarkdown(orderDetails.phone || deliveryDetails.phone)}
 📝 Комментарии: ${escapeMarkdown(orderDetails.comments || deliveryDetails.comments || "Нет")}
@@ -559,6 +573,9 @@ ${cartItems.map((item) => `- ${escapeMarkdown(item.name)} (${item.quantity} шт
 ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} сом` : "💸 Скидка не применена"}
 💰 Итоговая сумма: ${discountedTotal.toFixed(2)} сом
     `;
+
+    // Логирование сформированного текста
+    console.log("Сформированный текст заказа:", orderText);
 
     // Сохранение заказа в базу данных
     const [result] = await db.query(
@@ -634,7 +651,6 @@ ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} �
       console.log("Звуковое уведомление отправлено в Telegram:", audioResponse.data);
     } catch (audioError) {
       console.error("Ошибка отправки звукового уведомления в Telegram:", audioError.response?.data || audioError.message);
-      // Не возвращаем ошибку клиенту, так как текстовое сообщение уже отправлено
       console.warn("Звуковое уведомление не отправлено, но заказ сохранен и текстовое сообщение доставлено");
     }
 
