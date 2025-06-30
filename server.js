@@ -537,10 +537,11 @@ app.post("/api/public/send-order", async (req, res) => {
     const total = cartItems.reduce((sum, item) => sum + (Number(item.originalPrice) || 0) * item.quantity, 0);
     const discountedTotal = total * (1 - (discount || 0) / 100);
 
-    // Функция экранирования специальных символов для MarkdownV2
+    // Функция экранирования специальных символов для Markdown
     const escapeMarkdown = (text) => {
       if (!text) return "Нет";
-      return String(text).replace(/([_*[\]()~`>#+-=|{}.!\\-])/g, "\\$1");
+      // Экранируем только символы, необходимые для Markdown
+      return String(text).replace(/([*_`[\]])/g, "\\$1");
     };
 
     // Логирование входных данных для отладки
@@ -559,19 +560,19 @@ app.post("/api/public/send-order", async (req, res) => {
 
     // Формирование текста заказа
     const orderText = `
-📦 *Новый заказ:*
+*Новый заказ:*
 🏪 Филиал: ${escapeMarkdown(branchName)}
 👤 Имя: ${escapeMarkdown(orderDetails.name || deliveryDetails.name)}
 📞 Телефон: ${escapeMarkdown(orderDetails.phone || deliveryDetails.phone)}
 📝 Комментарии: ${escapeMarkdown(orderDetails.comments || deliveryDetails.comments || "Нет")}
 📍 Адрес доставки: ${escapeMarkdown(deliveryDetails.address || "Самовывоз")}
 
-🛒 *Товары:*
+*Товары:*
 ${cartItems.map((item) => `- ${escapeMarkdown(item.name)} (${item.quantity} шт. по ${item.originalPrice} сом)`).join("\n")}
 
-💰 Итоговая стоимость: ${total.toFixed(2)} сом
-${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} сом` : "💸 Скидка не применена"}
-💰 Итоговая сумма: ${discountedTotal.toFixed(2)} сом
+*Итоговая стоимость:* ${total.toFixed(2)} сом
+${promoCode ? `*Скидка (${discount}%):* ${discountedTotal.toFixed(2)} сом` : "*Скидка не применена*"}
+*Итоговая сумма:* ${discountedTotal.toFixed(2)} сом
     `;
 
     // Логирование сформированного текста
@@ -623,7 +624,7 @@ ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} �
         {
           chat_id: chatId,
           text: orderText,
-          parse_mode: "MarkdownV2",
+          parse_mode: "Markdown", // Изменено на Markdown
         }
       );
       console.log("Сообщение заказа отправлено в Telegram:", textResponse.data);
@@ -660,7 +661,6 @@ ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} �
     res.status(500).json({ error: "Ошибка сервера: " + error.message });
   }
 });
-
 // Админские маршруты
 app.get("/", (req, res) => res.send("Booday Pizza API"));
 
