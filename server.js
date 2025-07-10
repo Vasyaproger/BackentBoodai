@@ -9,12 +9,19 @@ const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = re
 const { Upload } = require("@aws-sdk/lib-storage");
 const axios = require("axios");
 const admin = require("firebase-admin"); // Импорт Firebase Admin SDK
+const twilio = require("twilio"); // Импорт Twilio для WhatsApp
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const JWT_SECRET = "your_jwt_secret_key";
+
+
+const twilio = require("twilio");
+const accountSid = "ACb9c8aeebda3237dffe1c241d623a9649";
+const authToken = "0945e7647cf793b97e6e5b6c9d66b729";
+const client = twilio(accountSid, authToken);
 
 
 // Инициализация Firebase Admin SDK
@@ -598,9 +605,10 @@ ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} �
     const TELEGRAM_BOT_TOKEN = "7858016810:AAELHxlmZORP7iHEIWdqYKw-rHl-q3aB8yY";
     if (!TELEGRAM_BOT_TOKEN) {
       console.error("TELEGRAM_BOT_TOKEN не указан");
-      return res.status(500).json({ error: "Ошибка сервера: TELEGRAM_BOT_TOKEN не настроен CHRISTMAS" });
+      return res.status(500).json({ error: "Ошибка сервера: TELEGRAM_BOT_TOKEN не настроен" });
     }
 
+    // Отправка в Telegram
     console.log(`Отправка заказа в Telegram для филиала "${branch[0].name}" (id: ${branchId}, chat_id: ${chatId})`);
     try {
       const response = await axios.post(
@@ -621,6 +629,44 @@ ${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} �
         });
       }
       return res.status(500).json({ error: `Ошибка отправки в Telegram: ${errorDescription}` });
+    }
+
+    // Отправка в WhatsApp
+    const phoneNumber = orderDetails.phone || deliveryDetails.phone;
+    if (phoneNumber) {
+      const whatsAppMessage = `
+Новый заказ:
+Филиал: ${branch[0].name}
+Имя: ${orderDetails.name || deliveryDetails.name}
+Телефон: ${phoneNumber}
+Комментарии: ${orderDetails.comments || deliveryDetails.comments || "Нет"}
+Адрес доставки: ${deliveryDetails.address || "Самовывоз"}
+
+Товары:
+${cartItems.map((item) => `- ${item.name} (${item.quantity} шт. по ${item.originalPrice} сом)`).join("\n")}
+
+Итоговая стоимость: ${total.toFixed(2)} сом
+${promoCode ? `Скидка (${discount}%): ${discountedTotal.toFixed(2)} сом` : "Скидка не применена"}
+Итоговая сумма: ${discountedTotal.toFixed(2)} сом
+      `;
+
+      try {
+        const message = await client.messages.create({
+          from: "whatsapp:+14155238886",
+          contentSid: "HXb5b62575e6e4ff6129ad7c8efe1f983e",
+          contentVariables: JSON.stringify({
+            1: (await db.query("SELECT name FROM branches WHERE id = ?", [branchId]))[0][0]?.name || "Неизвестный филиал",
+            2: `${discountedTotal.toFixed(2)} сом`,
+          }),
+          to: `whatsapp:${phoneNumber}`,
+        });
+        console.log(`Сообщение успешно отправлено в WhatsApp: ${message.sid}`);
+      } catch (whatsAppError) {
+        console.error("Ошибка отправки в WhatsApp:", whatsAppError.message);
+        // Не прерываем выполнение, так как Telegram-уведомление уже отправлено
+      }
+    } else {
+      console.warn("Номер телефона не указан, пропускаем отправку в WhatsApp");
     }
 
     res.status(200).json({ message: "Заказ успешно отправлен", orderId: result.insertId });
