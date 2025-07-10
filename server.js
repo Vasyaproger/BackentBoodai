@@ -8,20 +8,15 @@ const path = require("path");
 const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
 const { Upload } = require("@aws-sdk/lib-storage");
 const axios = require("axios");
-<<<<<<< HEAD
 const admin = require("firebase-admin"); // Импорт Firebase Admin SDK
 const twilio = require("twilio"); // Импорт Twilio для WhatsApp
-=======
-const admin = require("firebase-admin");
->>>>>>> 188702d309f149250e80b6109f6d6d2c287e6257
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const JWT_SECRET = "your_jwt_secret_key";
-const TELEGRAM_BOT_TOKEN = "7858016810:AAELHxlmZORP7iHEIWdqYKw-rHl-q3aB8yY";
-const NOTIFICATION_SOUND_URL = "https://nukesul-brepb-651f.twc1.net/product-image/boody-images/notification.mp3"; // URL звукового файла в S3
+
 
 const twilio = require("twilio");
 const accountSid = "ACb9c8aeebda3237dffe1c241d623a9649";
@@ -30,7 +25,7 @@ const client = twilio(accountSid, authToken);
 
 
 // Инициализация Firebase Admin SDK
-const serviceAccount = require("./boodai-pizza-firebase-adminsdk.json");
+const serviceAccount = require("./boodai-pizza-firebase-adminsdk.json"); // Путь к файлу учетных данных
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
@@ -68,7 +63,7 @@ const testS3Connection = async () => {
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 5 * 1024 * 1024, // Ограничение 5MB
+    fileSize: 5 * 1024 * 1024, // Ограничение по размеру (5MB)
   },
 }).single("image");
 
@@ -83,9 +78,11 @@ const uploadToS3 = async (file) => {
   };
 
   try {
-    const upload = new Upload({ client: s3Client, params });
+    const upload = new Upload({
+      client: s3Client,
+      params,
+    });
     await upload.done();
-    console.log(`Файл успешно загружен в S3: ${key}`);
     return key;
   } catch (err) {
     console.error("Ошибка при загрузке в S3:", err.message);
@@ -151,7 +148,9 @@ const optionalAuthenticateToken = (req, res, next) => {
   const token = req.headers["authorization"]?.split(" ")[1];
   if (token) {
     jwt.verify(token, JWT_SECRET, (err, user) => {
-      if (!err) req.user = user;
+      if (!err) {
+        req.user = user;
+      }
       next();
     });
   } else {
@@ -167,7 +166,7 @@ app.get("/product-image/:key", optionalAuthenticateToken, async (req, res) => {
     res.setHeader("Content-Type", image.ContentType || "image/jpeg");
     image.Body.pipe(res);
   } catch (err) {
-    console.error("Ошибка при отправке изображения:", err.message);
+    console.error("Ошибка при отправке изображения клиенту:", err.message);
     res.status(500).json({ error: "Ошибка получения изображения: " + err.message });
   }
 });
@@ -178,7 +177,7 @@ const initializeServer = async () => {
     const connection = await db.getConnection();
     console.log("Подключено к MySQL");
 
-    // Создание необходимых таблиц
+    // Создание таблицы branches
     await connection.query(`
       CREATE TABLE IF NOT EXISTS branches (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -199,7 +198,7 @@ const initializeServer = async () => {
     }
 
     const [telegramColumns] = await connection.query("SHOW COLUMNS FROM branches LIKE 'telegram_chat_id'");
-    if (!telegramColumns.length) {
+    if (telegramColumns.length === 0) {
       await connection.query("ALTER TABLE branches ADD COLUMN telegram_chat_id VARCHAR(50)");
       console.log("Добавлена колонка telegram_chat_id в таблицу branches");
     }
@@ -212,7 +211,7 @@ const initializeServer = async () => {
         ["BOODAI PIZZA", "-1002311447135"]
       );
       await connection.query(
-        "INSERT INTO branches (name, telegram_chat_id) VALUES (?, ?)", 
+        "INSERT INTO branches (name, telegram_chat_id) VALUES (?, ?)",
         ["Район", "-1002638475628"]
       );
       await connection.query(
@@ -221,7 +220,7 @@ const initializeServer = async () => {
       );
       await connection.query(
         "INSERT INTO branches (name, telegram_chat_id) VALUES (?, ?)",
-        ["Ошский район", "-100263-verbal8475628"]
+        ["Ошский район", "-1002638475628"]
       );
       console.log("Добавлены филиалы с telegram_chat_id");
     } else {
@@ -244,11 +243,11 @@ const initializeServer = async () => {
       console.log("Обновлены telegram_chat_id для существующих филиалов");
     }
 
-    // Проверка telegram_chat_id
+    // Проверка telegram_chat_id для филиалов
     const [allBranches] = await connection.query("SELECT id, name, telegram_chat_id FROM branches");
     for (const branch of allBranches) {
       if (!branch.telegram_chat_id) {
-        console.warn(`Филиал "${branch.name}" (id: ${branch.id}) не имеет telegram_chat_id.`);
+        console.warn(`Филиал "${branch.name}" (id: ${branch.id}) не имеет telegram_chat_id. Установите его через админ-панель.`);
       }
     }
 
@@ -271,7 +270,7 @@ const initializeServer = async () => {
       console.log("Добавлена колонка is_pizza в таблицу products");
     }
 
-    // Создание остальных таблиц
+    // Создание таблицы subcategories
     await connection.query(`
       CREATE TABLE IF NOT EXISTS subcategories (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -282,6 +281,7 @@ const initializeServer = async () => {
     `);
     console.log("Таблица subcategories проверена/создана");
 
+    // Создание таблицы promo_codes
     await connection.query(`
       CREATE TABLE IF NOT EXISTS promo_codes (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -294,6 +294,7 @@ const initializeServer = async () => {
     `);
     console.log("Таблица promo_codes проверена/создана");
 
+    // Создание таблицы orders
     await connection.query(`
       CREATE TABLE IF NOT EXISTS orders (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -311,6 +312,7 @@ const initializeServer = async () => {
     `);
     console.log("Таблица orders проверена/создана");
 
+    // Создание таблицы stories
     await connection.query(`
       CREATE TABLE IF NOT EXISTS stories (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -320,6 +322,7 @@ const initializeServer = async () => {
     `);
     console.log("Таблица stories проверена/создана");
 
+    // Создание таблицы discounts
     await connection.query(`
       CREATE TABLE IF NOT EXISTS discounts (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -333,6 +336,7 @@ const initializeServer = async () => {
     `);
     console.log("Таблица discounts проверена/создана");
 
+    // Создание таблицы banners
     await connection.query(`
       CREATE TABLE IF NOT EXISTS banners (
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -347,6 +351,7 @@ const initializeServer = async () => {
     `);
     console.log("Таблица banners проверена/создана");
 
+    // Создание таблицы sauces
     await connection.query(`
       CREATE TABLE IF NOT EXISTS sauces (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -358,6 +363,7 @@ const initializeServer = async () => {
     `);
     console.log("Таблица sauces проверена/создана");
 
+    // Создание таблицы связи products_sauces
     await connection.query(`
       CREATE TABLE IF NOT EXISTS products_sauces (
         product_id INT NOT NULL,
@@ -390,7 +396,7 @@ const initializeServer = async () => {
       await connection.query("INSERT INTO users (name, email, password) VALUES (?, ?, ?)", ["Admin", "admin@boodaypizza.com", hashedPassword]);
       console.log("Админ создан: admin@boodaypizza.com / admin123");
     } else {
-      console.log("Админ уже существует: admin@boodaypizza.com");
+      console.log("Админ уже существует:", "admin@boodaypizza.com");
     }
 
     connection.release();
@@ -442,9 +448,11 @@ app.get("/api/public/branches/:branchId/products", async (req, res) => {
       GROUP BY p.id
     `, [branchId]);
 
+    // Парсим JSON в массиве sauces
     const parsedProducts = products.map(product => {
       let sauces = [];
       try {
+        console.log(`Сырые данные sauces для продукта ${product.id}:`, product.sauces);
         sauces = product.sauces ? JSON.parse(product.sauces).filter(s => s && s.id) : [];
       } catch (parseError) {
         console.error(`Ошибка парсинга JSON для продукта ${product.id}:`, parseError.message);
@@ -535,7 +543,6 @@ app.post("/api/public/validate-promo", async (req, res) => {
 app.post("/api/public/send-order", async (req, res) => {
   const { orderDetails, deliveryDetails, cartItems, discount, promoCode, branchId } = req.body;
 
-  // Валидация входных данных
   if (!cartItems || !Array.isArray(cartItems) || cartItems.length === 0) {
     return res.status(400).json({ error: "Корзина пуста или содержит некорректные данные" });
   }
@@ -544,52 +551,27 @@ app.post("/api/public/send-order", async (req, res) => {
   }
 
   try {
-    // Рассчет итоговой суммы
     const total = cartItems.reduce((sum, item) => sum + (Number(item.originalPrice) || 0) * item.quantity, 0);
     const discountedTotal = total * (1 - (discount || 0) / 100);
 
-    // Функция экранирования специальных символов для Markdown
-    const escapeMarkdown = (text) => {
-      if (!text) return "Нет";
-      // Экранируем только символы, необходимые для Markdown
-      return String(text).replace(/([*_`[\]])/g, "\\$1");
-    };
+    const escapeMarkdown = (text) => (text ? text.replace(/([_*[\]()~`>#+-.!])/g, "\\$1") : "Нет");
 
-    // Логирование входных данных для отладки
-    console.log("Входные данные заказа:", {
-      orderDetails,
-      deliveryDetails,
-      cartItems,
-      discount,
-      promoCode,
-      branchId,
-    });
-
-    // Получение имени филиала
-    const [branchResult] = await db.query("SELECT name FROM branches WHERE id = ?", [branchId]);
-    const branchName = branchResult[0]?.name || "Неизвестный филиал";
-
-    // Формирование текста заказа
     const orderText = `
-*Новый заказ:*
-🏪 Филиал: ${escapeMarkdown(branchName)}
+📦 *Новый заказ:*
+🏪 Филиал: ${escapeMarkdown((await db.query("SELECT name FROM branches WHERE id = ?", [branchId]))[0][0]?.name || "Неизвестный филиал")}
 👤 Имя: ${escapeMarkdown(orderDetails.name || deliveryDetails.name)}
 📞 Телефон: ${escapeMarkdown(orderDetails.phone || deliveryDetails.phone)}
 📝 Комментарии: ${escapeMarkdown(orderDetails.comments || deliveryDetails.comments || "Нет")}
 📍 Адрес доставки: ${escapeMarkdown(deliveryDetails.address || "Самовывоз")}
 
-*Товары:*
+🛒 *Товары:*
 ${cartItems.map((item) => `- ${escapeMarkdown(item.name)} (${item.quantity} шт. по ${item.originalPrice} сом)`).join("\n")}
 
-*Итоговая стоимость:* ${total.toFixed(2)} сом
-${promoCode ? `*Скидка (${discount}%):* ${discountedTotal.toFixed(2)} сом` : "*Скидка не применена*"}
-*Итоговая сумма:* ${discountedTotal.toFixed(2)} сом
+💰 Итоговая стоимость: ${total.toFixed(2)} сом
+${promoCode ? `💸 Скидка (${discount}%): ${discountedTotal.toFixed(2)} сом` : "💸 Скидка не применена"}
+💰 Итоговая сумма: ${discountedTotal.toFixed(2)} сом
     `;
 
-    // Логирование сформированного текста
-    console.log("Сформированный текст заказа:", orderText);
-
-    // Сохранение заказа в базу данных
     const [result] = await db.query(
       `
       INSERT INTO orders (branch_id, total, status, order_details, delivery_details, cart_items, discount, promo_code)
@@ -606,69 +588,47 @@ ${promoCode ? `*Скидка (${discount}%):* ${discountedTotal.toFixed(2)} со
       ]
     );
 
-    // Получение информации о филиале
     const [branch] = await db.query("SELECT name, telegram_chat_id FROM branches WHERE id = ?", [branchId]);
     if (branch.length === 0) {
-      console.error(`Филиал с id ${branchId} не найден`);
+      console.error(`Филиал с id ${branchId} не найден в базе данных`);
       return res.status(400).json({ error: `Филиал с id ${branchId} не найден` });
     }
 
     const chatId = branch[0].telegram_chat_id;
     if (!chatId) {
-      console.error(`Для филиала "${branch[0].name}" (id: ${branchId}) не указан telegram_chat_id`);
+      console.error(`Для филиала с id ${branchId} (название: ${branch[0].name}) не указан telegram_chat_id`);
       return res.status(500).json({
-        error: `Для филиала "${branch[0].name}" не настроен Telegram chat ID.`,
+        error: `Для филиала "${branch[0].name}" не настроен Telegram chat ID. Пожалуйста, свяжитесь с администратором для настройки.`,
       });
     }
 
+    const TELEGRAM_BOT_TOKEN = "7858016810:AAELHxlmZORP7iHEIWdqYKw-rHl-q3aB8yY";
     if (!TELEGRAM_BOT_TOKEN) {
       console.error("TELEGRAM_BOT_TOKEN не указан");
       return res.status(500).json({ error: "Ошибка сервера: TELEGRAM_BOT_TOKEN не настроен" });
     }
 
-<<<<<<< HEAD
     // Отправка в Telegram
     console.log(`Отправка заказа в Telegram для филиала "${branch[0].name}" (id: ${branchId}, chat_id: ${chatId})`);
-=======
-    console.log(`Отправка заказа в Telegram для филиала "${branch[0].name}" (chat_id: ${chatId})`);
-
-    // Отправка текстового сообщения
->>>>>>> 188702d309f149250e80b6109f6d6d2c287e6257
     try {
-      const textResponse = await axios.post(
+      const response = await axios.post(
         `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
         {
           chat_id: chatId,
           text: orderText,
-          parse_mode: "Markdown", // Изменено на Markdown
+          parse_mode: "Markdown",
         }
       );
-      console.log("Сообщение заказа отправлено в Telegram:", textResponse.data);
-    } catch (textError) {
-      console.error("Ошибка отправки текстового сообщения в Telegram:", textError.response?.data || textError.message);
-      const errorDescription = textError.response?.data?.description || textError.message;
-      if (textError.response?.data?.error_code === 403) {
+      console.log(`Сообщение успешно отправлено в Telegram:`, response.data);
+    } catch (telegramError) {
+      console.error("Ошибка отправки в Telegram:", telegramError.response?.data || telegramError.message);
+      const errorDescription = telegramError.response?.data?.description || telegramError.message;
+      if (telegramError.response?.data?.error_code === 403) {
         return res.status(500).json({
           error: `Бот не имеет прав для отправки сообщений в группу (chat_id: ${chatId}). Убедитесь, что бот добавлен в группу и имеет права администратора.`,
         });
       }
-      return res.status(500).json({ error: `Ошибка отправки текста в Telegram: ${errorDescription}` });
-    }
-
-    // Отправка звукового уведомления
-    try {
-      const audioResponse = await axios.post(
-        `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendAudio`,
-        {
-          chat_id: chatId,
-          audio: NOTIFICATION_SOUND_URL,
-          caption: "Новый заказ!",
-        }
-      );
-      console.log("Звуковое уведомление отправлено в Telegram:", audioResponse.data);
-    } catch (audioError) {
-      console.error("Ошибка отправки звукового уведомления в Telegram:", audioError.response?.data || audioError.message);
-      console.warn("Звуковое уведомление не отправлено, но заказ сохранен и текстовое сообщение доставлено");
+      return res.status(500).json({ error: `Ошибка отправки в Telegram: ${errorDescription}` });
     }
 
     // Отправка в WhatsApp
@@ -715,6 +675,7 @@ ${promoCode ? `Скидка (${discount}%): ${discountedTotal.toFixed(2)} сом
     res.status(500).json({ error: "Ошибка сервера: " + error.message });
   }
 });
+
 // Админские маршруты
 app.get("/", (req, res) => res.send("Booday Pizza API"));
 
@@ -728,7 +689,7 @@ app.post("/admin/login", async (req, res) => {
 
     const user = users[0];
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(401).json({ error: "Неверный email или пароль" });
+    if (!isMatch) return res.status(401).json({ error: "Неверный emailDITTER email или пароль" });
 
     const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: "1h" });
     res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
@@ -781,6 +742,7 @@ app.get("/products", authenticateToken, async (req, res) => {
     const parsedProducts = products.map(product => {
       let sauces = [];
       try {
+        console.log(`Сырые данные sauces для продукта ${product.id}:`, product.sauces);
         sauces = product.sauces ? JSON.parse(product.sauces).filter(s => s && s.id) : [];
       } catch (parseError) {
         console.error(`Ошибка парсинга JSON для продукта ${product.id}:`, parseError.message);
@@ -966,804 +928,804 @@ app.delete("/branches/:id", authenticateToken, async (req, res) => {
     await db.query("DELETE FROM branches WHERE id = ?", [id]);
     res.json({ message: "Филиал удален" });
   } catch (err) {
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
-  }
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.post("/categories", authenticateToken, async (req, res) => {
-  const { name } = req.body;
-  if (!name) return res.status(400).json({ error: "Название категории обязательно" });
+const { name } = req.body;
+if (!name) return res.status(400).json({ error: "Название категории обязательно" });
 
-  try {
-    const [result] = await db.query("INSERT INTO categories (name) VALUES (?)", [name]);
-    res.status(201).json({ id: result.insertId, name });
-  } catch (err) {
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
-  }
+try {
+  const [result] = await db.query("INSERT INTO categories (name) VALUES (?)", [name]);
+  res.status(201).json({ id: result.insertId, name });
+} catch (err) {
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.put("/categories/:id", authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  const { name } = req.body;
-  if (!name) return res.status(400).json({ error: "Название категории обязательно" });
+const { id } = req.params;
+const { name } = req.body;
+if (!name) return res.status(400).json({ error: "Название категории обязательно" });
 
-  try {
-    await db.query("UPDATE categories SET name = ? WHERE id = ?", [name, id]);
-    res.json({ id, name });
-  } catch (err) {
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
-  }
+try {
+  await db.query("UPDATE categories SET name = ? WHERE id = ?", [name, id]);
+  res.json({ id, name });
+} catch (err) {
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.delete("/categories/:id", authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  try {
-    await db.query("DELETE FROM categories WHERE id = ?", [id]);
-    res.json({ message: "Категория удалена" });
-  } catch (err) {
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
-  }
+const { id } = req.params;
+try {
+  await db.query("DELETE FROM categories WHERE id = ?", [id]);
+  res.json({ message: "Категория удалена" });
+} catch (err) {
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.get("/subcategories", authenticateToken, async (req, res) => {
-  try {
-    const [subcategories] = await db.query(`
-      SELECT s.*, c.name as category_name 
-      FROM subcategories s
-      JOIN categories c ON s.category_id = c.id
-    `);
-    res.json(subcategories);
-  } catch (err) {
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
-  }
+try {
+  const [subcategories] = await db.query(`
+    SELECT s.*, c.name as category_name 
+    FROM subcategories s
+    JOIN categories c ON s.category_id = c.id
+  `);
+  res.json(subcategories);
+} catch (err) {
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.post("/subcategories", authenticateToken, async (req, res) => {
-  const { name, categoryId } = req.body;
-  if (!name || !categoryId) return res.status(400).json({ error: "Название и категория обязательны" });
+const { name, categoryId } = req.body;
+if (!name || !categoryId) return res.status(400).json({ error: "Название и категория обязательны" });
 
-  try {
-    const [result] = await db.query("INSERT INTO subcategories (name, category_id) VALUES (?, ?)", [name, categoryId]);
-    const [newSubcategory] = await db.query(
-      "SELECT s.*, c.name as category_name FROM subcategories s JOIN categories c ON s.category_id = c.id WHERE s.id = ?",
-      [result.insertId]
-    );
-    res.status(201).json(newSubcategory[0]);
-  } catch (err) {
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
-  }
+try {
+  const [result] = await db.query("INSERT INTO subcategories (name, category_id) VALUES (?, ?)", [name, categoryId]);
+  const [newSubcategory] = await db.query(
+    "SELECT s.*, c.name as category_name FROM subcategories s JOIN categories c ON s.category_id = c.id WHERE s.id = ?",
+    [result.insertId]
+  );
+  res.status(201).json(newSubcategory[0]);
+} catch (err) {
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.put("/subcategories/:id", authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  const { name, categoryId } = req.body;
-  if (!name || !categoryId) return res.status(400).json({ error: "Название и категория обязательны" });
+const { id } = req.params;
+const { name, categoryId } = req.body;
+if (!name || !categoryId) return res.status(400).json({ error: "Название и категория обязательны" });
 
-  try {
-    await db.query("UPDATE subcategories SET name = ?, category_id = ? WHERE id = ?", [name, categoryId, id]);
-    const [updatedSubcategory] = await db.query(
-      "SELECT s.*, c.name as category_name FROM subcategories s JOIN categories c ON s.category_id = c.id WHERE s.id = ?",
-      [id]
-    );
-    res.json(updatedSubcategory[0]);
-  } catch (err) {
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
-  }
+try {
+  await db.query("UPDATE subcategories SET name = ?, category_id = ? WHERE id = ?", [name, categoryId, id]);
+  const [updatedSubcategory] = await db.query(
+    "SELECT s.*, c.name as category_name FROM subcategories s JOIN categories c ON s.category_id = c.id WHERE s.id = ?",
+    [id]
+  );
+  res.json(updatedSubcategory[0]);
+} catch (err) {
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.delete("/subcategories/:id", authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  try {
-    await db.query("DELETE FROM subcategories WHERE id = ?", [id]);
-    res.json({ message: "Подкатегория удалена" });
-  } catch (err) {
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
-  }
+const { id } = req.params;
+try {
+  await db.query("DELETE FROM subcategories WHERE id = ?", [id]);
+  res.json({ message: "Подкатегория удалена" });
+} catch (err) {
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.post("/products", authenticateToken, (req, res) => {
-  upload(req, res, async (err) => {
-    if (err) {
-      console.error("Ошибка загрузки изображения:", err.message);
-      return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
-    }
+upload(req, res, async (err) => {
+  if (err) {
+    console.error("Ошибка загрузки изображения:", err.message);
+    return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+  }
 
-    const { name, description, priceSmall, priceMedium, priceLarge, priceSingle, branchId, categoryId, subCategoryId, sauceIds } = req.body;
-    let imageKey;
+  const { name, description, priceSmall, priceMedium, priceLarge, priceSingle, branchId, categoryId, subCategoryId, sauceIds } = req.body;
+  let imageKey;
 
-    if (!req.file) {
-      return res.status(400).json({ error: "Изображение обязательно" });
-    }
+  if (!req.file) {
+    return res.status(400).json({ error: "Изображение обязательно" });
+  }
 
-    try {
-      imageKey = await uploadToS3(req.file);
-    } catch (s3Err) {
-      console.error("Ошибка при загрузке в S3:", s3Err.message);
-      return res.status(500).json({ error: "Ошибка загрузки в S3: " + s3Err.message });
-    }
+  try {
+    imageKey = await uploadToS3(req.file);
+  } catch (s3Err) {
+    console.error("Ошибка при загрузке в S3:", s3Err.message);
+    return res.status(500).json({ error: "Ошибка загрузки в S3: " + s3Err.message });
+  }
 
-    if (!name || !branchId || !categoryId || !imageKey) {
-      return res.status(400).json({ error: "Все обязательные поля должны быть заполнены (name, branchId, categoryId, image)" });
-    }
+  if (!name || !branchId || !categoryId || !imageKey) {
+    return res.status(400).json({ error: "Все обязательные поля должны быть заполнены (name, branchId, categoryId, image)" });
+  }
 
-    try {
-      const [result] = await db.query(
-        `INSERT INTO products (
-          name, description, price_small, price_medium, price_large, price_single, 
-          branch_id, category_id, sub_category_id, image
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          name,
-          description || null,
-          priceSmall ? parseFloat(priceSmall) : null,
-          priceMedium ? parseFloat(priceMedium) : null,
-          priceLarge ? parseFloat(priceLarge) : null,
-          priceSingle ? parseFloat(priceSingle) : null,
-          branchId,
-          categoryId,
-          subCategoryId || null,
-          imageKey,
-        ]
-      );
+  try {
+    const [result] = await db.query(
+      `INSERT INTO products (
+        name, description, price_small, price_medium, price_large, price_single, 
+        branch_id, category_id, sub_category_id, image
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        name,
+        description || null,
+        priceSmall ? parseFloat(priceSmall) : null,
+        priceMedium ? parseFloat(priceMedium) : null,
+        priceLarge ? parseFloat(priceLarge) : null,
+        priceSingle ? parseFloat(priceSingle) : null,
+        branchId,
+        categoryId,
+        subCategoryId || null,
+        imageKey,
+      ]
+    );
 
-      // Обработка соусов
-      if (sauceIds) {
-        let sauceIdsArray = [];
-        try {
-          sauceIdsArray = Array.isArray(sauceIds) ? sauceIds : JSON.parse(sauceIds || '[]');
-          if (!Array.isArray(sauceIdsArray)) {
-            return res.status(400).json({ error: "sauceIds должен быть массивом" });
-          }
-        } catch (parseError) {
-          console.error("Ошибка парсинга sauceIds:", parseError.message);
-          return res.status(400).json({ error: "Некорректный формат sauceIds" });
+    // Обработка соусов
+    if (sauceIds) {
+      let sauceIdsArray = [];
+      try {
+        sauceIdsArray = Array.isArray(sauceIds) ? sauceIds : JSON.parse(sauceIds || '[]');
+        if (!Array.isArray(sauceIdsArray)) {
+          return res.status(400).json({ error: "sauceIds должен быть массивом" });
         }
-
-        console.log("sauceIds для добавления:", sauceIdsArray);
-
-        for (const sauceId of sauceIdsArray) {
-          const [sauce] = await db.query("SELECT id FROM sauces WHERE id = ?", [sauceId]);
-          if (sauce.length === 0) {
-            console.warn(`Соус с id ${sauceId} не найден, пропускаем`);
-            continue;
-          }
-          await db.query(
-            "INSERT INTO products_sauces (product_id, sauce_id) VALUES (?, ?)",
-            [result.insertId, sauceId]
-          );
-        }
+      } catch (parseError) {
+        console.error("Ошибка парсинга sauceIds:", parseError.message);
+        return res.status(400).json({ error: "Некорректный формат sauceIds" });
       }
 
-      const [newProduct] = await db.query(
-        `
-        SELECT p.*, 
-               b.name as branch_name, 
-               c.name as category_name,
-               s.name as subcategory_name,
-               COALESCE(
-                 (SELECT JSON_ARRAYAGG(
-                   JSON_OBJECT(
-                     'id', sa.id,
-                     'name', sa.name,
-                     'price', sa.price,
-                     'image', sa.image
-                   )
-                 )
-                 FROM products_sauces ps
-                 LEFT JOIN sauces sa ON ps.sauce_id = sa.id
-                 WHERE ps.product_id = p.id AND sa.id IS NOT NULL),
-                 '[]'
-               ) as sauces
-        FROM products p
-        LEFT JOIN branches b ON p.branch_id = b.id
-        LEFT JOIN categories c ON p.category_id = c.id
-        LEFT JOIN subcategories s ON p.sub_category_id = s.id
-        WHERE p.id = ?
-        GROUP BY p.id
-      `,
-        [result.insertId]
-      );
+      console.log("sauceIds для добавления:", sauceIdsArray);
 
-      res.status(201).json({
-        ...newProduct[0],
-        sauces: newProduct[0].sauces ? JSON.parse(newProduct[0].sauces).filter(s => s.id) : []
-      });
-    } catch (err) {
-      console.error("Ошибка при добавлении продукта:", err.message);
-      res.status(500).json({ error: "Ошибка сервера: " + err.message });
+      for (const sauceId of sauceIdsArray) {
+        const [sauce] = await db.query("SELECT id FROM sauces WHERE id = ?", [sauceId]);
+        if (sauce.length === 0) {
+          console.warn(`Соус с id ${sauceId} не найден, пропускаем`);
+          continue; // Пропускаем несуществующий соус
+        }
+        await db.query(
+          "INSERT INTO products_sauces (product_id, sauce_id) VALUES (?, ?)",
+          [result.insertId, sauceId]
+        );
+      }
     }
-  });
+
+    const [newProduct] = await db.query(
+      `
+      SELECT p.*, 
+             b.name as branch_name, 
+             c.name as category_name,
+             s.name as subcategory_name,
+             COALESCE(
+               (SELECT JSON_ARRAYAGG(
+                 JSON_OBJECT(
+                   'id', sa.id,
+                   'name', sa.name,
+                   'price', sa.price,
+                   'image', sa.image
+                 )
+               )
+               FROM products_sauces ps
+               LEFT JOIN sauces sa ON ps.sauce_id = sa.id
+               WHERE ps.product_id = p.id AND sa.id IS NOT NULL),
+               '[]'
+             ) as sauces
+      FROM products p
+      LEFT JOIN branches b ON p.branch_id = b.id
+      LEFT JOIN categories c ON p.category_id = c.id
+      LEFT JOIN subcategories s ON p.sub_category_id = s.id
+      WHERE p.id = ?
+      GROUP BY p.id
+    `,
+      [result.insertId]
+    );
+
+    res.status(201).json({
+      ...newProduct[0],
+      sauces: newProduct[0].sauces ? JSON.parse(newProduct[0].sauces).filter(s => s.id) : []
+    });
+  } catch (err) {
+    console.error("Ошибка при добавлении продукта:", err.message);
+    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  }
+});
 });
 
 app.put("/products/:id", authenticateToken, (req, res) => {
-  upload(req, res, async (err) => {
-    if (err) {
-      console.error("Ошибка загрузки изображения:", err.message);
-      return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+upload(req, res, async (err) => {
+  if (err) {
+    console.error("Ошибка загрузки изображения:", err.message);
+    return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+  }
+
+  const { id } = req.params;
+  const { name, description, priceSmall, priceMedium, priceLarge, priceSingle, branchId, categoryId, subCategoryId, sauceIds } = req.body;
+  let imageKey;
+
+  try {
+    const [existing] = await db.query("SELECT image FROM products WHERE id = ?", [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ error: "Продукт не найден" });
     }
 
-    const { id } = req.params;
-    const { name, description, priceSmall, priceMedium, priceLarge, priceSingle, branchId, categoryId, subCategoryId, sauceIds } = req.body;
-    let imageKey;
+    if (req.file) {
+      imageKey = await uploadToS3(req.file);
+      if (existing[0].image) {
+        await deleteFromS3(existing[0].image);
+      }
+    } else {
+      imageKey = existing[0].image;
+    }
 
-    try {
-      const [existing] = await db.query("SELECT image FROM products WHERE id = ?", [id]);
-      if (existing.length === 0) {
-        return res.status(404).json({ error: "Продукт не найден" });
+    await db.query(
+      `UPDATE products SET 
+        name = ?, description = ?, price_small = ?, price_medium = ?, price_large = ?, 
+        price_single = ?, branch_id = ?, category_id = ?, sub_category_id = ?, image = ? 
+      WHERE id = ?`,
+      [
+        name,
+        description || null,
+        priceSmall ? parseFloat(priceSmall) : null,
+        priceMedium ? parseFloat(priceMedium) : null,
+        priceLarge ? parseFloat(priceLarge) : null,
+        priceSingle ? parseFloat(priceSingle) : null,
+        branchId,
+        categoryId,
+        subCategoryId || null,
+        imageKey,
+        id,
+      ]
+    );
+
+    // Обновление соусов
+    await db.query("DELETE FROM products_sauces WHERE product_id = ?", [id]);
+    if (sauceIds) {
+      let sauceIdsArray = [];
+      try {
+        sauceIdsArray = Array.isArray(sauceIds) ? sauceIds : JSON.parse(sauceIds || '[]');
+        if (!Array.isArray(sauceIdsArray)) {
+          return res.status(400).json({ error: "sauceIds должен быть массивом" });
+        }
+      } catch (parseError) {
+        console.error("Ошибка парсинга sauceIds:", parseError.message);
+        return res.status(400).json({ error: "Некорректный формат sauceIds" });
       }
 
-      if (req.file) {
-        imageKey = await uploadToS3(req.file);
-        if (existing[0].image) {
-          await deleteFromS3(existing[0].image);
+      console.log("sauceIds для обновления:", sauceIdsArray);
+
+      for (const sauceId of sauceIdsArray) {
+        const [sauce] = await db.query("SELECT id FROM sauces WHERE id = ?", [sauceId]);
+        if (sauce.length === 0) {
+          console.warn(`Соус с id ${sauceId} не найден, пропускаем`);
+          continue; // Пропускаем несуществующий соус
         }
-      } else {
-        imageKey = existing[0].image;
+        await db.query(
+          "INSERT INTO products_sauces (product_id, sauce_id) VALUES (?, ?)",
+          [id, sauceId]
+        );
       }
+    }
 
-      await db.query(
-        `UPDATE products SET 
-          name = ?, description = ?, price_small = ?, price_medium = ?, price_large = ?, 
-          price_single = ?, branch_id = ?, category_id = ?, sub_category_id = ?, image = ? 
-        WHERE id = ?`,
-        [
-          name,
-          description || null,
-          priceSmall ? parseFloat(priceSmall) : null,
-          priceMedium ? parseFloat(priceMedium) : null,
-          priceLarge ? parseFloat(priceLarge) : null,
-          priceSingle ? parseFloat(priceSingle) : null,
-          branchId,
-          categoryId,
-          subCategoryId || null,
-          imageKey,
-          id,
-        ]
-      );
-
-      // Обновление соусов
-      await db.query("DELETE FROM products_sauces WHERE product_id = ?", [id]);
-      if (sauceIds) {
-        let sauceIdsArray = [];
-        try {
-          sauceIdsArray = Array.isArray(sauceIds) ? sauceIds : JSON.parse(sauceIds || '[]');
-          if (!Array.isArray(sauceIdsArray)) {
-            return res.status(400).json({ error: "sauceIds должен быть массивом" });
-          }
-        } catch (parseError) {
-          console.error("Ошибка парсинга sauceIds:", parseError.message);
-          return res.status(400).json({ error: "Некорректный формат sauceIds" });
-        }
-
-        console.log("sauceIds для обновления:", sauceIdsArray);
-
-        for (const sauceId of sauceIdsArray) {
-          const [sauce] = await db.query("SELECT id FROM sauces WHERE id = ?", [sauceId]);
-          if (sauce.length === 0) {
-            console.warn(`Соус с id ${sauceId} не найден, пропускаем`);
-            continue;
-          }
-          await db.query(
-            "INSERT INTO products_sauces (product_id, sauce_id) VALUES (?, ?)",
-            [id, sauceId]
-          );
-        }
-      }
-
-      const [updatedProduct] = await db.query(
-        `
-        SELECT p.*, 
-               b.name as branch_name,
-               c.name as category_name,
-               s.name as subcategory_name,
-               COALESCE(
-                 (SELECT JSON_ARRAYAGG(
-                   JSON_OBJECT(
-                     'id', sa.id,
-                     'name', sa.name,
-                     'price', sa.price,
-                     'image', sa.image
-                   )
+    const [updatedProduct] = await db.query(
+      `
+      SELECT p.*, 
+             b.name as branch_name,
+             c.name as category_name,
+             s.name as subcategory_name,
+             COALESCE(
+               (SELECT JSON_ARRAYAGG(
+                 JSON_OBJECT(
+                   'id', sa.id,
+                   'name', sa.name,
+                   'price', sa.price,
+                   'image', sa.image
                  )
-                 FROM products_sauces ps
-                 LEFT JOIN sauces sa ON ps.sauce_id = sa.id
-                 WHERE ps.product_id = p.id AND sa.id IS NOT NULL),
-                 '[]'
-               ) as sauces
-        FROM products p
-        LEFT JOIN branches b ON p.branch_id = b.id
-        LEFT JOIN categories c ON p.category_id = c.id
-        LEFT JOIN subcategories s ON p.sub_category_id = s.id
-        WHERE p.id = ?
-        GROUP BY p.id
-      `,
-        [id]
-      );
+               )
+               FROM products_sauces ps
+               LEFT JOIN sauces sa ON ps.sauce_id = sa.id
+               WHERE ps.product_id = p.id AND sa.id IS NOT NULL),
+               '[]'
+             ) as sauces
+      FROM products p
+      LEFT JOIN branches b ON p.branch_id = b.id
+      LEFT JOIN categories c ON p.category_id = c.id
+      LEFT JOIN subcategories s ON p.sub_category_id = s.id
+      WHERE p.id = ?
+      GROUP BY p.id
+    `,
+      [id]
+    );
 
-      res.json({
-        ...updatedProduct[0],
-        sauces: updatedProduct[0].sauces ? JSON.parse(updatedProduct[0].sauces).filter(s => s.id) : []
-      });
-    } catch (err) {
-      console.error("Ошибка при обновлении продукта:", err.message);
-      res.status(500).json({ error: "Ошибка сервера: " + err.message });
-    }
-  });
+    res.json({
+      ...updatedProduct[0],
+      sauces: updatedProduct[0].sauces ? JSON.parse(updatedProduct[0].sauces).filter(s => s.id) : []
+    });
+  } catch (err) {
+    console.error("Ошибка при обновлении продукта:", err.message);
+    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  }
+});
 });
 
 app.delete("/products/:id", authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const [product] = await db.query("SELECT image FROM products WHERE id = ?", [id]);
-    if (product.length === 0) return res.status(404).json({ error: "Продукт не найден" });
+const { id } = req.params;
+try {
+  const [product] = await db.query("SELECT image FROM products WHERE id = ?", [id]);
+  if (product.length === 0) return res.status(404).json({ error: "Продукт не найден" });
 
-    if (product[0].image) {
-      await deleteFromS3(product[0].image);
-    }
-
-    await db.query("DELETE FROM products WHERE id = ?", [id]);
-    res.json({ message: "Продукт удален" });
-  } catch (err) {
-    console.error("Ошибка при удалении продукта:", err.message);
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  if (product[0].image) {
+    await deleteFromS3(product[0].image);
   }
+
+  await db.query("DELETE FROM products WHERE id = ?", [id]);
+  res.json({ message: "Продукт удален" });
+} catch (err) {
+  console.error("Ошибка при удалении продукта:", err.message);
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.post("/discounts", authenticateToken, async (req, res) => {
-  const { productId, discountPercent, expiresAt, isActive } = req.body;
-  if (!productId || !discountPercent) return res.status(400).json({ error: "ID продукта и процент скидки обязательны" });
-  if (discountPercent < 1 || discountPercent > 100) return res.status(400).json({ error: "Процент скидки должен быть от 1 до 100" });
+const { productId, discountPercent, expiresAt, isActive } = req.body;
+if (!productId || !discountPercent) return res.status(400).json({ error: "ID продукта и процент скидки обязательны" });
+if (discountPercent < 1 || discountPercent > 100) return res.status(400).json({ error: "Процент скидки должен быть от 1 до 100" });
 
-  try {
-    const [product] = await db.query("SELECT id FROM products WHERE id = ?", [productId]);
-    if (product.length === 0) return res.status(404).json({ error: "Продукт не найден" });
+try {
+  const [product] = await db.query("SELECT id FROM products WHERE id = ?", [productId]);
+  if (product.length === 0) return res.status(404).json({ error: "Продукт не найден" });
 
-    const [existingDiscount] = await db.query(`
-      SELECT id FROM discounts 
-      WHERE product_id = ? AND is_active = TRUE AND (expires_at IS NULL OR expires_at > NOW())
-    `, [productId]);
-    if (existingDiscount.length > 0) {
-      return res.status(400).json({ error: "Для этого продукта уже существует активная скидка" });
-    }
-
-    const [result] = await db.query(
-      "INSERT INTO discounts (product_id, discount_percent, expires_at, is_active) VALUES (?, ?, ?, ?)",
-      [productId, discountPercent, expiresAt || null, isActive !== undefined ? isActive : true]
-    );
-
-    const [newDiscount] = await db.query(`
-      SELECT d.*, p.name as product_name 
-      FROM discounts d
-      JOIN products p ON d.product_id = p.id
-      WHERE d.id = ?
-    `, [result.insertId]);
-
-    res.status(201).json(newDiscount[0]);
-  } catch (err) {
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  const [existingDiscount] = await db.query(`
+    SELECT id FROM discounts 
+    WHERE product_id = ? AND is_active = TRUE AND (expires_at IS NULL OR expires_at > NOW())
+  `, [productId]);
+  if (existingDiscount.length > 0) {
+    return res.status(400).json({ error: "Для этого продукта уже существует активная скидка" });
   }
+
+  const [result] = await db.query(
+    "INSERT INTO discounts (product_id, discount_percent, expires_at, is_active) VALUES (?, ?, ?, ?)",
+    [productId, discountPercent, expiresAt || null, isActive !== undefined ? isActive : true]
+  );
+
+  const [newDiscount] = await db.query(`
+    SELECT d.*, p.name as product_name 
+    FROM discounts d
+    JOIN products p ON d.product_id = p.id
+    WHERE d.id = ?
+  `, [result.insertId]);
+
+  res.status(201).json(newDiscount[0]);
+} catch (err) {
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.put("/discounts/:id", authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  const { productId, discountPercent, expiresAt, isActive } = req.body;
-  if (!productId || !discountPercent) return res.status(400).json({ error: "ID продукта и процент скидки обязательны" });
-  if (discountPercent < 1 || discountPercent > 100) return res.status(400).json({ error: "Процент скидки должен быть от 1 до 100" });
+const { id } = req.params;
+const { productId, discountPercent, expiresAt, isActive } = req.body;
+if (!productId || !discountPercent) return res.status(400).json({ error: "ID продукта и процент скидки обязательны" });
+if (discountPercent < 1 || discountPercent > 100) return res.status(400).json({ error: "Процент скидки должен быть от 1 до 100" });
+
+try {
+  const [discount] = await db.query("SELECT product_id FROM discounts WHERE id = ?", [id]);
+  if (discount.length === 0) return res.status(404).json({ error: "Скидка не найдена" });
+
+  const [product] = await db.query("SELECT id FROM products WHERE id = ?", [productId]);
+  if (product.length === 0) return res.status(404).json({ error: "Продукт не найден" });
+
+  if (discount[0].product_id !== productId) {
+    const [existingDiscount] = await db.query(`
+      SELECT id FROM discounts 
+      WHERE product_id = ? AND id != ? AND is_active = TRUE AND (expires_at IS NULL OR expires_at > NOW())
+    `, [productId, id]);
+    if (existingDiscount.length > 0) {
+      return res.status(400).json({ error: "Для этого продукта уже существует другая активная скидка" });
+    }
+  }
+
+  await db.query(
+    "UPDATE discounts SET product_id = ?, discount_percent = ?, expires_at = ?, is_active = ? WHERE id = ?",
+    [productId, discountPercent, expiresAt || null, isActive !== undefined ? isActive : true, id]
+  );
+
+  const [updatedDiscount] = await db.query(`
+    SELECT d.*, p.name as product_name 
+    FROM discounts d
+    JOIN products p ON d.product_id = p.id
+    WHERE d.id = ?
+  `, [id]);
+
+  res.json(updatedDiscount[0]);
+} catch (err) {
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
+});
+
+app.delete("/discounts/:id", authenticateToken, async (req, res) => {
+const { id } = req.params;
+try {
+  const [discount] = await db.query(`
+    SELECT d.*, p.name as product_name 
+    FROM discounts d
+    JOIN products p ON d.product_id = p.id
+    WHERE d.id = ?
+  `, [id]);
+  if (discount.length === 0) return res.status(404).json({ error: "Скидка не найдена" });
+
+  await db.query("DELETE FROM discounts WHERE id = ?", [id]);
+  res.json({ message: "Скидка удалена", product: { id: discount[0].product_id, name: discount[0].product_name } });
+} catch (err) {
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
+});
+
+app.post("/banners", authenticateToken, (req, res) => {
+upload(req, res, async (err) => {
+  if (err) {
+    console.error("Ошибка загрузки изображения:", err.message);
+    return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+  }
+
+  const { title, description, button_text, promo_code_id } = req.body;
+  let imageKey;
+
+  if (!req.file) {
+    return res.status(400).json({ error: "Изображение обязательно" });
+  }
 
   try {
-    const [discount] = await db.query("SELECT product_id FROM discounts WHERE id = ?", [id]);
-    if (discount.length === 0) return res.status(404).json({ error: "Скидка не найдена" });
+    imageKey = await uploadToS3(req.file);
+  } catch (s3Err) {
+    console.error("Ошибка при загрузке в S3:", s3Err.message);
+    return res.status(500).json({ error: "Ошибка загрузки в S3: " + s3Err.message });
+  }
 
-    const [product] = await db.query("SELECT id FROM products WHERE id = ?", [productId]);
-    if (product.length === 0) return res.status(404).json({ error: "Продукт не найден" });
+  try {
+    if (promo_code_id) {
+      const [promo] = await db.query("SELECT id FROM promo_codes WHERE id = ?", [promo_code_id]);
+      if (promo.length === 0) {
+        return res.status(404).json({ error: "Промокод не найден" });
+      }
+    }
 
-    if (discount[0].product_id !== productId) {
-      const [existingDiscount] = await db.query(`
-        SELECT id FROM discounts 
-        WHERE product_id = ? AND id != ? AND is_active = TRUE AND (expires_at IS NULL OR expires_at > NOW())
-      `, [productId, id]);
-      if (existingDiscount.length > 0) {
-        return res.status(400).json({ error: "Для этого продукта уже существует другая активная скидка" });
+    const [result] = await db.query(
+      "INSERT INTO banners (image, title, description, button_text, promo_code_id) VALUES (?, ?, ?, ?, ?)",
+      [imageKey, title || null, description || null, button_text || null, promo_code_id || null]
+    );
+
+    const [newBanner] = await db.query(`
+      SELECT b.*, pc.code AS promo_code, pc.discount_percent
+      FROM banners b
+      LEFT JOIN promo_codes pc ON b.promo_code_id = pc.id
+      WHERE b.id = ?
+    `, [result.insertId]);
+
+    res.status(201).json({
+      ...newBanner[ moody0],
+      image: `https://nukesul-brepb-651f.twc1.net/product-image/${newBanner[0].image.split("/").pop()}`
+    });
+  } catch (err) {
+    console.error("Ошибка при добавлении баннера:", err.message);
+    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  }
+});
+});
+
+app.put("/banners/:id", authenticateToken, (req, res) => {
+upload(req, res, async (err) => {
+  if (err) {
+    console.error("Ошибка загрузки изображения:", err.message);
+    return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+  }
+
+  const { id } = req.params;
+  const { title, description, button_text, promo_code_id } = req.body;
+  let imageKey;
+
+  try {
+    const [existing] = await db.query("SELECT image FROM banners WHERE id = ?", [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ error: "Баннер не найден" });
+    }
+
+    if (req.file) {
+      imageKey = await uploadToS3(req.file);
+      if (existing[0].image) {
+        await deleteFromS3(existing[0].image);
+      }
+    } else {
+      imageKey = existing[0].image;
+    }
+
+    if (promo_code_id) {
+      const [promo] = await db.query("SELECT id FROM promo_codes WHERE id = ?", [promo_code_id]);
+      if (promo.length === 0) {
+        return res.status(404).json({ error: "Промокод не найден" });
       }
     }
 
     await db.query(
-      "UPDATE discounts SET product_id = ?, discount_percent = ?, expires_at = ?, is_active = ? WHERE id = ?",
-      [productId, discountPercent, expiresAt || null, isActive !== undefined ? isActive : true, id]
+      "UPDATE banners SET image = ?, title = ?, description = ?, button_text = ?, promo_code_id = ? WHERE id = ?",
+      [imageKey, title || null, description || null, button_text || null, promo_code_id || null, id]
     );
 
-    const [updatedDiscount] = await db.query(`
-      SELECT d.*, p.name as product_name 
-      FROM discounts d
-      JOIN products p ON d.product_id = p.id
-      WHERE d.id = ?
+    const [updatedBanner] = await db.query(`
+      SELECT b.*, pc.code AS promo_code, pc.discount_percent
+      FROM banners b
+      LEFT JOIN promo_codes pc ON b.promo_code_id = pc.id
+      WHERE b.id = ?
     `, [id]);
 
-    res.json(updatedDiscount[0]);
+    res.json({
+      ...updatedBanner[0],
+      image: `https://nukesul-brepb-651f.twc1.net/product-image/${updatedBanner[0].image.split("/").pop()}`
+    });
   } catch (err) {
+    console.error("Ошибка при обновлении баннера:", err.message);
     res.status(500).json({ error: "Ошибка сервера: " + err.message });
   }
 });
-
-app.delete("/discounts/:id", authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const [discount] = await db.query(`
-      SELECT d.*, p.name as product_name 
-      FROM discounts d
-      JOIN products p ON d.product_id = p.id
-      WHERE d.id = ?
-    `, [id]);
-    if (discount.length === 0) return res.status(404).json({ error: "Скидка не найдена" });
-
-    await db.query("DELETE FROM discounts WHERE id = ?", [id]);
-    res.json({ message: "Скидка удалена", product: { id: discount[0].product_id, name: discount[0].product_name } });
-  } catch (err) {
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
-  }
-});
-
-app.post("/banners", authenticateToken, (req, res) => {
-  upload(req, res, async (err) => {
-    if (err) {
-      console.error("Ошибка загрузки изображения:", err.message);
-      return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
-    }
-
-    const { title, description, button_text, promo_code_id } = req.body;
-    let imageKey;
-
-    if (!req.file) {
-      return res.status(400).json({ error: "Изображение обязательно" });
-    }
-
-    try {
-      imageKey = await uploadToS3(req.file);
-    } catch (s3Err) {
-      console.error("Ошибка при загрузке в S3:", s3Err.message);
-      return res.status(500).json({ error: "Ошибка загрузки в S3: " + s3Err.message });
-    }
-
-    try {
-      if (promo_code_id) {
-        const [promo] = await db.query("SELECT id FROM promo_codes WHERE id = ?", [promo_code_id]);
-        if (promo.length === 0) {
-          return res.status(404).json({ error: "Промокод не найден" });
-        }
-      }
-
-      const [result] = await db.query(
-        "INSERT INTO banners (image, title, description, button_text, promo_code_id) VALUES (?, ?, ?, ?, ?)",
-        [imageKey, title || null, description || null, button_text || null, promo_code_id || null]
-      );
-
-      const [newBanner] = await db.query(`
-        SELECT b.*, pc.code AS promo_code, pc.discount_percent
-        FROM banners b
-        LEFT JOIN promo_codes pc ON b.promo_code_id = pc.id
-        WHERE b.id = ?
-      `, [result.insertId]);
-
-      res.status(201).json({
-        ...newBanner[0],
-        image: `https://nukesul-brepb-651f.twc1.net/product-image/${newBanner[0].image.split("/").pop()}`
-      });
-    } catch (err) {
-      console.error("Ошибка при добавлении баннера:", err.message);
-      res.status(500).json({ error: "Ошибка сервера: " + err.message });
-    }
-  });
-});
-
-app.put("/banners/:id", authenticateToken, (req, res) => {
-  upload(req, res, async (err) => {
-    if (err) {
-      console.error("Ошибка загрузки изображения:", err.message);
-      return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
-    }
-
-    const { id } = req.params;
-    const { title, description, button_text, promo_code_id } = req.body;
-    let imageKey;
-
-    try {
-      const [existing] = await db.query("SELECT image FROM banners WHERE id = ?", [id]);
-      if (existing.length === 0) {
-        return res.status(404).json({ error: "Баннер не найден" });
-      }
-
-      if (req.file) {
-        imageKey = await uploadToS3(req.file);
-        if (existing[0].image) {
-          await deleteFromS3(existing[0].image);
-        }
-      } else {
-        imageKey = existing[0].image;
-      }
-
-      if (promo_code_id) {
-        const [promo] = await db.query("SELECT id FROM promo_codes WHERE id = ?", [promo_code_id]);
-        if (promo.length === 0) {
-          return res.status(404).json({ error: "Промокод не найден" });
-        }
-      }
-
-      await db.query(
-        "UPDATE banners SET image = ?, title = ?, description = ?, button_text = ?, promo_code_id = ? WHERE id = ?",
-        [imageKey, title || null, description || null, button_text || null, promo_code_id || null, id]
-      );
-
-      const [updatedBanner] = await db.query(`
-        SELECT b.*, pc.code AS promo_code, pc.discount_percent
-        FROM banners b
-        LEFT JOIN promo_codes pc ON b.promo_code_id = pc.id
-        WHERE b.id = ?
-      `, [id]);
-
-      res.json({
-        ...updatedBanner[0],
-        image: `https://nukesul-brepb-651f.twc1.net/product-image/${updatedBanner[0].image.split("/").pop()}`
-      });
-    } catch (err) {
-      console.error("Ошибка при обновлении баннера:", err.message);
-      res.status(500).json({ error: "Ошибка сервера: " + err.message });
-    }
-  });
 });
 
 app.delete("/banners/:id", authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const [banner] = await db.query("SELECT image FROM banners WHERE id = ?", [id]);
-    if (banner.length === 0) return res.status(404).json({ error: "Баннер не найден" });
+const { id } = req.params;
+try {
+  const [banner] = await db.query("SELECT image FROM banners WHERE id = ?", [id]);
+  if (banner.length === 0) return res.status(404).json({ error: "Баннер не найден" });
 
-    if (banner[0].image) {
-      await deleteFromS3(banner[0].image);
-    }
-
-    await db.query("DELETE FROM banners WHERE id = ?", [id]);
-    res.json({ message: "Баннер удален" });
-  } catch (err) {
-    console.error("Ошибка при удалении баннера:", err.message);
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  if (banner[0].image) {
+    await deleteFromS3(banner[0].image);
   }
+
+  await db.query("DELETE FROM banners WHERE id = ?", [id]);
+  res.json({ message: "Баннер удален" });
+} catch (err) {
+  console.error("Ошибка при удалении баннера:", err.message);
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.post("/sauces", authenticateToken, (req, res) => {
-  upload(req, res, async (err) => {
-    if (err) {
-      console.error("Ошибка загрузки изображения:", err.message);
-      return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+upload(req, res, async (err) => {
+  if (err) {
+    console.error("Ошибка загрузки изображения:", err.message);
+    return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+  }
+
+  const { name, price } = req.body;
+  let imageKey = null;
+
+  if (!name || !price) {
+    return res.status(400).json({ error: "Название и цена обязательны" });
+  }
+
+  try {
+    if (req.file) {
+      imageKey = await uploadToS3(req.file);
     }
 
-    const { name, price } = req.body;
-    let imageKey = null;
+    const [result] = await db.query(
+      "INSERT INTO sauces (name, price, image) VALUES (?, ?, ?)",
+      [name, parseFloat(price), imageKey]
+    );
 
-    if (!name || !price) {
-      return res.status(400).json({ error: "Название и цена обязательны" });
-    }
-
-    try {
-      if (req.file) {
-        imageKey = await uploadToS3(req.file);
-      }
-
-      const [result] = await db.query(
-        "INSERT INTO sauces (name, price, image) VALUES (?, ?, ?)",
-        [name, parseFloat(price), imageKey]
-      );
-
-      const [newSauce] = await db.query("SELECT * FROM sauces WHERE id = ?", [result.insertId]);
-      res.status(201).json({
-        ...newSauce[0],
-        image: newSauce[0].image ? `https://nukesul-brepb-651f.twc1.net/product-image/${newSauce[0].image.split("/").pop()}` : null
-      });
-    } catch (err) {
-      console.error("Ошибка при добавлении соуса:", err.message);
-      res.status(500).json({ error: "Ошибка сервера: " + err.message });
-    }
-  });
+    const [newSauce] = await db.query("SELECT * FROM sauces WHERE id = ?", [result.insertId]);
+    res.status(201).json({
+      ...newSauce[0],
+      image: newSauce[0].image ? `https://nukesul-brepb-651f.twc1.net/product-image/${newSauce[0].image.split("/").pop()}` : null
+    });
+  } catch (err) {
+    console.error("Ошибка при добавлении соуса:", err.message);
+    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  }
+});
 });
 
 app.put("/sauces/:id", authenticateToken, (req, res) => {
-  upload(req, res, async (err) => {
-    if (err) {
-      console.error("Ошибка загрузки изображения:", err.message);
-      return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+upload(req, res, async (err) => {
+  if (err) {
+    console.error("Ошибка загрузки изображения:", err.message);
+    return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+  }
+
+  const { id } = req.params;
+  const { name, price } = req.body;
+  let imageKey;
+
+  try {
+    const [existing] = await db.query("SELECT image FROM sauces WHERE id = ?", [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ error: "Соус не найден" });
     }
 
-    const { id } = req.params;
-    const { name, price } = req.body;
-    let imageKey;
-
-    try {
-      const [existing] = await db.query("SELECT image FROM sauces WHERE id = ?", [id]);
-      if (existing.length === 0) {
-        return res.status(404).json({ error: "Соус не найден" });
+    if (req.file) {
+      imageKey = await uploadToS3(req.file);
+      if (existing[0].image) {
+        await deleteFromS3(existing[0].image);
       }
-
-      if (req.file) {
-        imageKey = await uploadToS3(req.file);
-        if (existing[0].image) {
-          await deleteFromS3(existing[0].image);
-        }
-      } else {
-        imageKey = existing[0].image;
-      }
-
-      await db.query(
-        "UPDATE sauces SET name = ?, price = ?, image = ? WHERE id = ?",
-        [name, parseFloat(price), imageKey, id]
-      );
-
-      const [updatedSauce] = await db.query("SELECT * FROM sauces WHERE id = ?", [id]);
-      res.json({
-        ...updatedSauce[0],
-        image: updatedSauce[0].image ? `https://nukesul-brepb-651f.twc1.net/product-image/${updatedSauce[0].image.split("/").pop()}` : null
-      });
-    } catch (err) {
-      console.error("Ошибка при обновлении соуса:", err.message);
-      res.status(500).json({ error: "Ошибка сервера: " + err.message });
+    } else {
+      imageKey = existing[0].image;
     }
-  });
+
+    await db.query(
+      "UPDATE sauces SET name = ?, price = ?, image = ? WHERE id = ?",
+      [name, parseFloat(price), imageKey, id]
+    );
+
+    const [updatedSauce] = await db.query("SELECT * FROM sauces WHERE id = ?", [id]);
+    res.json({
+      ...updatedSauce[0],
+      image: updatedSauce[0].image ? `https://nukesul-brepb-651f.twc1.net/product-image/${updatedSauce[0].image.split("/").pop()}` : null
+    });
+  } catch (err) {
+    console.error("Ошибка при обновлении соуса:", err.message);
+    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  }
+});
 });
 
 app.delete("/sauces/:id", authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const [sauce] = await db.query("SELECT image FROM sauces WHERE id = ?", [id]);
-    if (sauce.length === 0) return res.status(404).json({ error: "Соус не найден" });
+const { id } = req.params;
+try {
+  const [sauce] = await db.query("SELECT image FROM sauces WHERE id = ?", [id]);
+  if (sauce.length === 0) return res.status(404).json({ error: "Соус не найден" });
 
-    if (sauce[0].image) {
-      await deleteFromS3(sauce[0].image);
-    }
-
-    await db.query("DELETE FROM sauces WHERE id = ?", [id]);
-    res.json({ message: "Соус удален" });
-  } catch (err) {
-    console.error("Ошибка при удалении соуса:", err.message);
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  if (sauce[0].image) {
+    await deleteFromS3(sauce[0].image);
   }
+
+  await db.query("DELETE FROM sauces WHERE id = ?", [id]);
+  res.json({ message: "Соус удален" });
+} catch (err) {
+  console.error("Ошибка при удалении соуса:", err.message);
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.post("/stories", authenticateToken, (req, res) => {
-  upload(req, res, async (err) => {
-    if (err) {
-      console.error("Ошибка загрузки изображения:", err.message);
-      return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
-    }
+upload(req, res, async (err) => {
+  if (err) {
+    console.error("Ошибка загрузки изображения:", err.message);
+    return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+  }
 
-    let imageKey;
+  let imageKey;
 
-    if (!req.file) {
-      return res.status(400).json({ error: "Изображение обязательно" });
-    }
+  if (!req.file) {
+    return res.status(400).json({ error: "Изображение обязательно" });
+  }
 
-    try {
-      imageKey = await uploadToS3(req.file);
-    } catch (s3Err) {
-      console.error("Ошибка при загрузке в S3:", s3Err.message);
-      return res.status(500).json({ error: "Ошибка загрузки в S3: " + s3Err.message });
-    }
+  try {
+    imageKey = await uploadToS3(req.file);
+  } catch (s3Err) {
+    console.error("Ошибка при загрузке в S3:", s3Err.message);
+    return res.status(500).json({ error: "Ошибка загрузки в S3: " + s3Err.message });
+  }
 
-    try {
-      const [result] = await db.query("INSERT INTO stories (image) VALUES (?)", [imageKey]);
-      res.status(201).json({ id: result.insertId, image: `https://nukesul-brepb-651f.twc1.net/product-image/${imageKey.split("/").pop()}` });
-    } catch (err) {
-      console.error("Ошибка при добавлении истории:", err.message);
-      res.status(500).json({ error: "Ошибка сервера: " + err.message });
-    }
-  });
+  try {
+    const [result] = await db.query("INSERT INTO stories (image) VALUES (?)", [imageKey]);
+    res.status(201).json({ id: result.insertId, image: `https://nukesul-brepb-651f.twc1.net/product-image/${imageKey.split("/").pop()}` });
+  } catch (err) {
+    console.error("Ошибка при добавлении истории:", err.message);
+    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  }
+});
 });
 
 app.put("/stories/:id", authenticateToken, (req, res) => {
-  upload(req, res, async (err) => {
-    if (err) {
-      console.error("Ошибка загрузки изображения:", err.message);
-      return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+upload(req, res, async (err) => {
+  if (err) {
+    console.error("Ошибка загрузки изображения:", err.message);
+    return res.status(400).json({ error: "Ошибка загрузки изображения: " + err.message });
+  }
+
+  const { id } = req.params;
+  let imageKey;
+
+  try {
+    const [existing] = await db.query("SELECT image FROM stories WHERE id = ?", [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ error: "История не найдена" });
     }
 
-    const { id } = req.params;
-    let imageKey;
-
-    try {
-      const [existing] = await db.query("SELECT image FROM stories WHERE id = ?", [id]);
-      if (existing.length === 0) {
-        return res.status(404).json({ error: "История не найдена" });
+    if (req.file) {
+      imageKey = await uploadToS3(req.file);
+      if (existing[0].image) {
+        await deleteFromS3(existing[0].image);
       }
-
-      if (req.file) {
-        imageKey = await uploadToS3(req.file);
-        if (existing[0].image) {
-          await deleteFromS3(existing[0].image);
-        }
-      } else {
-        imageKey = existing[0].image;
-      }
-
-      await db.query("UPDATE stories SET image = ? WHERE id = ?", [imageKey, id]);
-      res.json({ id, image: `https://nukesul-brepb-651f.twc1.net/product-image/${imageKey.split("/").pop()}` });
-    } catch (err) {
-      console.error("Ошибка при обновлении истории:", err.message);
-      res.status(500).json({ error: "Ошибка сервера: " + err.message });
+    } else {
+      imageKey = existing[0].image;
     }
-  });
+
+    await db.query("UPDATE stories SET image = ? WHERE id = ?", [imageKey, id]);
+    res.json({ id, image: `https://nukesul-brepb-651f.twc1.net/product-image/${imageKey.split("/").pop()}` });
+  } catch (err) {
+    console.error("Ошибка при обновлении истории:", err.message);
+    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  }
+});
 });
 
 app.delete("/stories/:id", authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const [story] = await db.query("SELECT image FROM stories WHERE id = ?", [id]);
-    if (story.length === 0) return res.status(404).json({ error: "История не найдена" });
+const { id } = req.params;
+try {
+  const [story] = await db.query("SELECT image FROM stories WHERE id = ?", [id]);
+  if (story.length === 0) return res.status(404).json({ error: "История не найдена" });
 
-    if (story[0].image) {
-      await deleteFromS3(story[0].image);
-    }
-
-    await db.query("DELETE FROM stories WHERE id = ?", [id]);
-    res.json({ message: "История удалена" });
-  } catch (err) {
-    console.error("Ошибка при удалении истории:", err.message);
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  if (story[0].image) {
+    await deleteFromS3(story[0].image);
   }
+
+  await db.query("DELETE FROM stories WHERE id = ?", [id]);
+  res.json({ message: "История удалена" });
+} catch (err) {
+  console.error("Ошибка при удалении истории:", err.message);
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.post("/register", async (req, res) => {
-  const { name, email, password } = req.body;
-  if (!name || !email || !password) {
-    return res.status(400).json({ error: "Все поля обязательны" });
+const { name, email, password } = req.body;
+if (!name || !email || !password) {
+  return res.status(400).json({ error: "Все поля обязательны" });
+}
+
+try {
+  const [existingUsers] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
+  if (existingUsers.length > 0) {
+    return res.status(400).json({ error: "Пользователь с таким email уже существует" });
   }
 
-  try {
-    const [existingUsers] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
-    if (existingUsers.length > 0) {
-      return res.status(400).json({ error: "Пользователь с таким email уже существует" });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const [result] = await db.query("INSERT INTO users (name, email, password) VALUES (?, ?, ?)", [name, email, hashedPassword]);
-    const token = jwt.sign({ id: result.insertId, email }, JWT_SECRET, { expiresIn: "1h" });
-    res.status(201).json({ token, user: { id: result.insertId, name, email } });
-  } catch (err) {
-    console.error("Ошибка при регистрации:", err.message);
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
-  }
+  const hashedPassword = await bcrypt.hash(password, 10);
+  const [result] = await db.query("INSERT INTO users (name, email, password) VALUES (?, ?, ?)", [name, email, hashedPassword]);
+  const token = jwt.sign({ id: result.insertId, email }, JWT_SECRET, { expiresIn: "1h" });
+  res.status(201).json({ token, user: { id: result.insertId, name, email } });
+} catch (err) {
+  console.error("Ошибка при регистрации:", err.message);
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.post("/login", async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: "Введите email и пароль" });
+const { email, password } = req.body;
+if (!email || !password) {
+  return res.status(400).json({ error: "Введите email и пароль" });
+}
+
+try {
+  const [users] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
+  if (users.length === 0) {
+    return res.status(401).json({ error: "Неверный email или пароль" });
   }
 
-  try {
-    const [users] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
-    if (users.length === 0) {
-      return res.status(401).json({ error: "Неверный email или пароль" });
-    }
-
-    const user = users[0];
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ error: "Неверный email или пароль" });
-    }
-
-    const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: "1h" });
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
-  } catch (err) {
-    console.error("Ошибка при входе:", err.message);
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
+  const user = users[0];
+  const isMatch = await bcrypt.compare(password, user.password);
+  if (!isMatch) {
+    return res.status(401).json({ error: "Неверный email или пароль" });
   }
+
+  const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: "1h" });
+  res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
+} catch (err) {
+  console.error("Ошибка при входе:", err.message);
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 app.get("/users", authenticateToken, async (req, res) => {
-  try {
-    const [users] = await db.query("SELECT id, name, email FROM users");
-    res.json(users);
-  } catch (err) {
-    console.error("Ошибка при получении пользователей:", err.message);
-    res.status(500).json({ error: "Ошибка сервера: " + err.message });
-  }
+try {
+  const [users] = await db.query("SELECT id, name, email FROM users");
+  res.json(users);
+} catch (err) {
+  console.error("Ошибка при получении пользователей:", err.message);
+  res.status(500).json({ error: "Ошибка сервера: " + err.message });
+}
 });
 
 initializeServer();
