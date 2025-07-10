@@ -25,7 +25,7 @@ const client = twilio(accountSid, authToken);
 
 
 // Инициализация Firebase Admin SDK
-const serviceAccount = require("./boodai-pizza-firebase-adminsdk.json"); // Путь к файлу учетных данных
+const serviceAccount = require("./boodai-pizza-firebase-adminsdk.json"); // Путь к файлу учетных данных00
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
